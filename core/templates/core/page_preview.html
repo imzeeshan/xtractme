@@ -1,0 +1,189 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Page {{ page.page_number }} Preview - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Page {{ page.page_number }} Preview</h1>
+    <div>
+        <a href="{% url 'document_detail' document.pk %}" class="btn btn-secondary">Back to Document</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>PDF Page Preview</h5>
+            </div>
+            <div class="card-body">
+                {% if pdf_preview_data %}
+                <div class="text-center">
+                    <img src="data:image/png;base64,{{ pdf_preview_data }}" 
+                         alt="Page {{ page.page_number }}" 
+                         class="img-fluid border rounded"
+                         style="max-height: 800px; width: auto;">
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <p>PDF preview not available for this page.</p>
+                    <a href="{{ document.file.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                        View Original PDF
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Extracted Text</h5>
+            </div>
+            <div class="card-body">
+                {% if page.text %}
+                <div class="page-content" style="max-height: 300px; overflow-y: auto;">
+                    {{ page.text|linebreaks }}
+                </div>
+                {% else %}
+                <p class="text-muted">No text extracted from this page.</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5>MinerU JSON Data</h5>
+                <button class="btn btn-sm btn-outline-secondary" onclick="copyJson()">
+                    Copy JSON
+                </button>
+            </div>
+            <div class="card-body">
+                {% if page.json_data %}
+                <pre id="json-display" class="bg-light p-3 rounded" style="max-height: 500px; overflow-y: auto; overflow-x: auto; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word; line-height: 1.6;"><code class="json-content">{{ page.get_json_preview|escape }}</code></pre>
+                {% else %}
+                <div class="alert alert-warning">
+                    <p>No JSON data available for this page.</p>
+                    <p class="mb-0"><small>This page may have been processed with a different OCR engine or before MinerU JSON extraction was enabled.</small></p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Page Navigation</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        {% if prev_page %}
+                        <a href="{% url 'page_preview' prev_page.pk %}" class="btn btn-outline-primary">
+                            ← Previous Page ({{ prev_page.page_number }})
+                        </a>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <span class="badge bg-primary">Page {{ page.page_number }} of {{ document.total_pages }}</span>
+                    </div>
+                    <div>
+                        {% if next_page %}
+                        <a href="{% url 'page_preview' next_page.pk %}" class="btn btn-outline-primary">
+                            Next Page ({{ next_page.page_number }}) →
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+#json-display {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+
+.json-content {
+    color: #212529;
+    display: block;
+    margin: 0;
+    padding: 0;
+}
+
+/* JSON syntax highlighting */
+.json-key {
+    color: #0066cc;
+    font-weight: 600;
+}
+
+.json-string {
+    color: #008000;
+}
+
+.json-number {
+    color: #ff6600;
+}
+
+.json-boolean {
+    color: #800080;
+}
+
+.json-null {
+    color: #808080;
+    font-style: italic;
+}
+</style>
+
+<script>
+function copyJson() {
+    const jsonText = document.getElementById('json-display').textContent;
+    navigator.clipboard.writeText(jsonText).then(function() {
+        alert('JSON copied to clipboard!');
+    }, function(err) {
+        console.error('Failed to copy: ', err);
+    });
+}
+
+// Enhanced JSON syntax highlighting
+document.addEventListener('DOMContentLoaded', function() {
+    const jsonDisplay = document.getElementById('json-display');
+    if (jsonDisplay) {
+        const code = jsonDisplay.querySelector('code');
+        if (code) {
+            let text = code.textContent;
+            
+            // Escape HTML first
+            const div = document.createElement('div');
+            div.textContent = text;
+            text = div.innerHTML;
+            
+            // Highlight JSON keys (quoted strings followed by colon)
+            text = text.replace(/"([^"]+)":/g, '<span class="json-key">"$1":</span>');
+            
+            // Highlight string values (quoted strings not followed by colon)
+            text = text.replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>');
+            
+            // Highlight boolean values
+            text = text.replace(/\b(true|false)\b/g, '<span class="json-boolean">$1</span>');
+            
+            // Highlight null
+            text = text.replace(/\bnull\b/g, '<span class="json-null">null</span>');
+            
+            // Highlight numbers (integers and floats)
+            text = text.replace(/: (\d+\.?\d*)/g, ': <span class="json-number">$1</span>');
+            
+            code.innerHTML = text;
+        }
+    }
+});
+</script>
+{% endblock %}
+

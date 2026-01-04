@@ -1,0 +1,54 @@
+# Django Web Framework
+Django>=6.0,<7.0  # Latest 6.x series
+
+# PDF Processing
+PyMuPDF>=1.26.7  # Latest stable version
+# pdfplumber>=0.11.8  # PDF text extraction library (OPTIONAL - conflicts with mineru's pdfminer.six version)
+# Note: pdfplumber requires pdfminer.six==20251107 which conflicts with mineru's requirement (pdfminer.six==20250506)
+# The code handles this gracefully - if pdfplumber fails to import, it will be disabled automatically
+# To install pdfplumber separately: pip install pdfplumber --no-deps && pip install pypdfium2 charset-normalizer cryptography
+
+# OCR Libraries
+mineru>=2.6.4  # Latest version - MinerU for document understanding
+pytesseract>=0.3.13  # Latest version
+deepseek-ocr>=0.3.0  # Optional: Only needed if not using API mode
+requests>=2.32.4  # Latest version for security
+ftfy>=6.3.1  # Latest version
+dill>=0.3.8  # Latest version
+shapely>=2.1.0  # Latest version
+pyclipper>=1.4.0  # Latest version
+omegaconf>=2.3.0  # Required by MinerU for configuration management
+
+# Additional OCR Engines (Optional)
+paddlepaddle>=2.6.1  # Latest version
+paddleocr>=3.1.0  # Latest version
+transformers>=4.57.3  # Latest version for TrOCR and Donut VLM models
+torch>=2.7.1  # Latest version for TrOCR and Donut (PyTorch)
+
+# Image Processing
+opencv-python-headless>=4.10.0  # Latest version
+Pillow>=12.1.0  # Latest version
+
+# Scientific Computing
+numpy>=1.26.4,<2.0  # Keep constraint to avoid breaking changes
+
+# Environment Management
+python-dotenv>=1.2.1  # Latest version
+
+# LLM Integration
+ollama>=0.3.0  # Latest version
+
+# Data Validation
+jsonschema>=4.25.1  # Latest version - JSON schema validation library
+
+# Admin Theme
+django-unfold>=0.74.1  # Latest version - Modern Django admin theme
+
+# Notes:
+# - opencv-python was removed in favor of opencv-python-headless (no GUI dependencies)
+# - All OCR engines are optional - install only what you need
+# - PaddleOCR, TrOCR, and Donut require significant disk space for model downloads
+# - torch (PyTorch) is large - consider CPU-only version if GPU not available
+# - numpy is constrained to <2.0 due to compatibility with opencv and other packages
+# - Some packages have strict version requirements: opt-einsum==3.3.0 (paddlepaddle), 
+#   PyYAML==6.0.2 (paddlex), pypdfium2==4.30.0 (pdftext), onnxruntime<=1.20.1 (magika on Windows)

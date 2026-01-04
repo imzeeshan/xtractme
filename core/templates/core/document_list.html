@@ -1,0 +1,49 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Documents - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Documents</h1>
+    <a href="{% url 'document_create' %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Upload New Document
+    </a>
+</div>
+
+{% if documents %}
+    <div class="row">
+        {% for document in documents %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card document-card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">{{ document.title }}</h5>
+                    <p class="card-text text-muted">
+                        <small>
+                            <strong>Type:</strong> {{ document.file_type|upper }}<br>
+                            <strong>Pages:</strong> {{ document.total_pages }}<br>
+                            <strong>OCR Engine:</strong> {{ document.ocr_engine|title }}<br>
+                            <strong>Created:</strong> {{ document.created_at|date:"M d, Y" }}
+                        </small>
+                    </p>
+                    {% if document.description %}
+                    <p class="card-text">{{ document.description|truncatewords:20 }}</p>
+                    {% endif %}
+                </div>
+                <div class="card-footer bg-white">
+                    <a href="{% url 'document_detail' document.pk %}" class="btn btn-sm btn-outline-primary">View</a>
+                    <a href="{% url 'document_update' document.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                    <a href="{% url 'document_delete' document.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        <h4>No documents found</h4>
+        <p>Get started by uploading your first document.</p>
+        <a href="{% url 'document_create' %}" class="btn btn-primary">Upload Document</a>
+    </div>
+{% endif %}
+{% endblock %}
+

@@ -1,0 +1,517 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://xtractme.com/schemas/capital-call.json",
+  "title": "Capital Call Document Schema",
+  "description": "JSON schema for validating and structuring Capital Call documents used in private equity, venture capital, and investment funds",
+  "type": "object",
+  "required": [
+    "fund_information",
+    "call_details",
+    "investor_information",
+    "payment_instructions"
+  ],
+  "properties": {
+    "document_metadata": {
+      "type": "object",
+      "description": "Metadata about the document itself",
+      "properties": {
+        "document_type": {
+          "type": "string",
+          "enum": ["capital_call", "drawdown_notice", "capital_commitment_call"],
+          "description": "Type of capital call document"
+        },
+        "document_id": {
+          "type": "string",
+          "description": "Unique identifier for this capital call document"
+        },
+        "document_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date when the document was issued"
+        },
+        "document_version": {
+          "type": "string",
+          "description": "Version of the document"
+        },
+        "language": {
+          "type": "string",
+          "default": "en",
+          "description": "Language of the document (ISO 639-1 code)"
+        }
+      }
+    },
+    "fund_information": {
+      "type": "object",
+      "description": "Information about the fund",
+      "required": ["fund_name"],
+      "properties": {
+        "fund_name": {
+          "type": "string",
+          "description": "Name of the investment fund"
+        },
+        "fund_id": {
+          "type": "string",
+          "description": "Unique identifier for the fund"
+        },
+        "fund_registration_number": {
+          "type": "string",
+          "description": "Legal registration number of the fund"
+        },
+        "fund_manager": {
+          "type": "object",
+          "description": "Information about the fund manager",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of the fund management company"
+            },
+            "address": {
+              "type": "object",
+              "description": "Address of the fund manager",
+              "properties": {
+                "street": {"type": "string"},
+                "city": {"type": "string"},
+                "state": {"type": "string"},
+                "postal_code": {"type": "string"},
+                "country": {"type": "string"}
+              }
+            },
+            "contact": {
+              "type": "object",
+              "properties": {
+                "phone": {"type": "string"},
+                "email": {"type": "string", "format": "email"},
+                "website": {"type": "string", "format": "uri"}
+              }
+            }
+          }
+        },
+        "fund_currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Currency code (ISO 4217, e.g., USD, EUR, GBP)"
+        },
+        "fund_size": {
+          "type": "object",
+          "description": "Total size of the fund",
+          "properties": {
+            "total_commitments": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total capital commitments to the fund"
+            },
+            "total_called": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total capital called to date"
+            },
+            "total_remaining": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total remaining uncalled capital"
+            }
+          }
+        }
+      }
+    },
+    "call_details": {
+      "type": "object",
+      "description": "Details of the capital call",
+      "required": ["call_number", "call_date", "due_date", "total_call_amount"],
+      "properties": {
+        "call_number": {
+          "type": ["string", "integer"],
+          "description": "Sequential number of this capital call"
+        },
+        "call_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date when the capital call is issued"
+        },
+        "due_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date by which payment is due"
+        },
+        "total_call_amount": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total amount being called across all investors"
+        },
+        "call_percentage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percentage of commitment being called"
+        },
+        "call_purpose": {
+          "type": "string",
+          "description": "Purpose or reason for this capital call"
+        },
+        "call_breakdown": {
+          "type": "object",
+          "description": "Breakdown of what the capital call covers",
+          "properties": {
+            "investments": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Amount allocated for investments"
+            },
+            "management_fees": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Amount for management fees"
+            },
+            "operating_expenses": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Amount for operating expenses"
+            },
+            "reserves": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Amount held in reserves"
+            },
+            "other": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Other expenses or allocations"
+            },
+            "other_description": {
+              "type": "string",
+              "description": "Description of other expenses"
+            }
+          }
+        },
+        "investment_details": {
+          "type": "array",
+          "description": "Details of specific investments this call is funding",
+          "items": {
+            "type": "object",
+            "properties": {
+              "investment_name": {
+                "type": "string",
+                "description": "Name of the investment"
+              },
+              "investment_amount": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Amount allocated to this investment"
+              },
+              "investment_type": {
+                "type": "string",
+                "description": "Type of investment (e.g., equity, debt, convertible)"
+              }
+            }
+          }
+        }
+      }
+    },
+    "investor_information": {
+      "type": "object",
+      "description": "Information about the investor receiving this call",
+      "required": ["investor_name", "commitment_amount", "current_call_amount"],
+      "properties": {
+        "investor_name": {
+          "type": "string",
+          "description": "Name of the investor or limited partner"
+        },
+        "investor_id": {
+          "type": "string",
+          "description": "Unique identifier for the investor"
+        },
+        "investor_type": {
+          "type": "string",
+          "enum": ["limited_partner", "general_partner", "institutional", "individual", "other"],
+          "description": "Type of investor"
+        },
+        "commitment_amount": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total capital commitment of the investor"
+        },
+        "ownership_percentage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percentage ownership in the fund"
+        },
+        "previous_contributions": {
+          "type": "object",
+          "description": "Summary of previous capital contributions",
+          "properties": {
+            "total_contributed": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total amount contributed in previous calls"
+            },
+            "number_of_calls": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of previous capital calls"
+            },
+            "last_call_date": {
+              "type": "string",
+              "format": "date",
+              "description": "Date of the last capital call"
+            },
+            "last_call_amount": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Amount of the last capital call"
+            }
+          }
+        },
+        "current_call_amount": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Amount being called from this investor"
+        },
+        "remaining_commitment": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Remaining uncalled commitment after this call"
+        },
+        "investor_address": {
+          "type": "object",
+          "description": "Address of the investor",
+          "properties": {
+            "street": {"type": "string"},
+            "city": {"type": "string"},
+            "state": {"type": "string"},
+            "postal_code": {"type": "string"},
+            "country": {"type": "string"}
+          }
+        },
+        "investor_contact": {
+          "type": "object",
+          "properties": {
+            "primary_contact": {"type": "string"},
+            "phone": {"type": "string"},
+            "email": {"type": "string", "format": "email"}
+          }
+        }
+      }
+    },
+    "payment_instructions": {
+      "type": "object",
+      "description": "Instructions for making the payment",
+      "required": ["bank_name", "account_number", "routing_number"],
+      "properties": {
+        "bank_name": {
+          "type": "string",
+          "description": "Name of the receiving bank"
+        },
+        "bank_address": {
+          "type": "object",
+          "description": "Address of the bank",
+          "properties": {
+            "street": {"type": "string"},
+            "city": {"type": "string"},
+            "state": {"type": "string"},
+            "postal_code": {"type": "string"},
+            "country": {"type": "string"}
+          }
+        },
+        "account_name": {
+          "type": "string",
+          "description": "Name on the bank account"
+        },
+        "account_number": {
+          "type": "string",
+          "description": "Bank account number"
+        },
+        "routing_number": {
+          "type": "string",
+          "description": "Bank routing number (US) or sort code (UK)"
+        },
+        "swift_code": {
+          "type": "string",
+          "description": "SWIFT/BIC code for international transfers"
+        },
+        "iban": {
+          "type": "string",
+          "description": "International Bank Account Number (for international transfers)"
+        },
+        "wire_instructions": {
+          "type": "string",
+          "description": "Additional wire transfer instructions"
+        },
+        "payment_reference": {
+          "type": "string",
+          "description": "Reference number to include with payment"
+        },
+        "payment_methods": {
+          "type": "array",
+          "description": "Accepted payment methods",
+          "items": {
+            "type": "string",
+            "enum": ["wire_transfer", "ach", "check", "other"]
+          }
+        },
+        "minimum_payment_amount": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Minimum payment amount if partial payments are allowed"
+        }
+      }
+    },
+    "terms_and_conditions": {
+      "type": "object",
+      "description": "Terms and conditions of the capital call",
+      "properties": {
+        "late_payment_penalty": {
+          "type": "object",
+          "description": "Penalty for late payment",
+          "properties": {
+            "penalty_rate": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Interest rate or penalty percentage"
+            },
+            "penalty_type": {
+              "type": "string",
+              "enum": ["interest_rate", "percentage", "fixed_amount"],
+              "description": "Type of penalty"
+            },
+            "grace_period_days": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of days before penalty applies"
+            }
+          }
+        },
+        "default_provisions": {
+          "type": "string",
+          "description": "Provisions regarding default on payment"
+        },
+        "partial_payment_allowed": {
+          "type": "boolean",
+          "description": "Whether partial payments are accepted"
+        },
+        "payment_terms": {
+          "type": "string",
+          "description": "General payment terms and conditions"
+        },
+        "governing_law": {
+          "type": "string",
+          "description": "Jurisdiction and governing law"
+        },
+        "dispute_resolution": {
+          "type": "string",
+          "description": "Dispute resolution procedures"
+        }
+      }
+    },
+    "legal_notices": {
+      "type": "object",
+      "description": "Legal notices and disclaimers",
+      "properties": {
+        "confidentiality_notice": {
+          "type": "string",
+          "description": "Confidentiality and non-disclosure notice"
+        },
+        "regulatory_notices": {
+          "type": "array",
+          "description": "Regulatory compliance notices",
+          "items": {
+            "type": "string"
+          }
+        },
+        "risk_disclosures": {
+          "type": "string",
+          "description": "Risk disclosure statements"
+        },
+        "tax_notices": {
+          "type": "string",
+          "description": "Tax-related notices"
+        },
+        "other_notices": {
+          "type": "array",
+          "description": "Other legal notices",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "supporting_documents": {
+      "type": "array",
+      "description": "References to supporting documents",
+      "items": {
+        "type": "object",
+        "properties": {
+          "document_name": {
+            "type": "string",
+            "description": "Name of the supporting document"
+          },
+          "document_type": {
+            "type": "string",
+            "description": "Type of document (e.g., subscription agreement, LPA)"
+          },
+          "document_reference": {
+            "type": "string",
+            "description": "Reference number or identifier"
+          },
+          "attachment_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL or path to the document"
+          }
+        }
+      }
+    },
+    "signatures": {
+      "type": "object",
+      "description": "Signatures and authorization",
+      "properties": {
+        "authorized_signatory": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "title": {"type": "string"},
+            "signature_date": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        },
+        "fund_manager_signature": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "title": {"type": "string"},
+            "signature_date": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        }
+      }
+    },
+    "additional_information": {
+      "type": "object",
+      "description": "Any additional information or notes",
+      "properties": {
+        "notes": {
+          "type": "string",
+          "description": "General notes or comments"
+        },
+        "contact_for_questions": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "phone": {"type": "string"},
+            "email": {"type": "string", "format": "email"}
+          }
+        },
+        "custom_fields": {
+          "type": "object",
+          "description": "Additional custom fields as key-value pairs",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

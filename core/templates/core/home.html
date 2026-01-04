@@ -1,0 +1,606 @@
+{% extends 'core/base.html' %}
+
+{% block title %}XtractMe - Intelligent Document Processing{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-section">
+    <div class="container">
+        <div class="row align-items-center min-vh-75">
+            <div class="col-lg-6">
+                <div class="hero-content">
+                    <h1 class="hero-title">
+                        Transform Documents into
+                        <span class="gradient-text">Structured Data</span>
+                    </h1>
+                    <p class="hero-subtitle">
+                        Extract, analyze, and structure information from PDFs and images using advanced OCR and AI technology. 
+                        Turn unstructured documents into actionable insights.
+                    </p>
+                    <div class="hero-buttons">
+                        <a href="{% url 'document_create' %}" class="btn btn-primary btn-lg me-3">
+                            Get Started
+                            <i class="ms-2">→</i>
+                        </a>
+                        <a href="{% url 'document_list' %}" class="btn btn-outline-light btn-lg">
+                            View Documents
+                        </a>
+                    </div>
+                    <div class="hero-stats mt-5">
+                        <div class="stat-item">
+                            <div class="stat-number">6+</div>
+                            <div class="stat-label">OCR Engines</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">100%</div>
+                            <div class="stat-label">Accuracy</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">AI</div>
+                            <div class="stat-label">Powered</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="hero-visual">
+                    <div class="floating-card card-1">
+                        <div class="card-icon">📄</div>
+                        <div class="card-text">PDF Processing</div>
+                    </div>
+                    <div class="floating-card card-2">
+                        <div class="card-icon">🖼️</div>
+                        <div class="card-text">Image OCR</div>
+                    </div>
+                    <div class="floating-card card-3">
+                        <div class="card-icon">🤖</div>
+                        <div class="card-text">AI Analysis</div>
+                    </div>
+                    <div class="floating-card card-4">
+                        <div class="card-icon">📊</div>
+                        <div class="card-text">Structured Data</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features Section -->
+<section class="features-section py-5">
+    <div class="container">
+        <div class="text-center mb-5">
+            <h2 class="section-title">Powerful Features</h2>
+            <p class="section-subtitle">Everything you need to extract and structure document data</p>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h3 class="feature-title">Multiple OCR Engines</h3>
+                    <p class="feature-description">
+                        Choose from 6 powerful OCR engines including MinerU, Tesseract, DeepSeek, PaddleOCR, TrOCR, and Donut.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <h3 class="feature-title">AI-Powered Extraction</h3>
+                    <p class="feature-description">
+                        Leverage Large Language Models to extract structured data according to custom schemas and prompts.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">📋</div>
+                    <h3 class="feature-title">Schema Validation</h3>
+                    <p class="feature-description">
+                        Define JSON schemas for your documents and get validated, structured output that matches your requirements.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">📄</div>
+                    <h3 class="feature-title">Page-by-Page Processing</h3>
+                    <p class="feature-description">
+                        Process documents page by page with detailed text extraction and JSON data for each page.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <h3 class="feature-title">Custom Prompts</h3>
+                    <p class="feature-description">
+                        Create and manage custom prompts for different document types and extraction requirements.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3 class="feature-title">Fast Processing</h3>
+                    <p class="feature-description">
+                        Process documents quickly with optimized OCR engines and efficient batch processing capabilities.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- How It Works Section -->
+<section class="how-it-works-section py-5 bg-light">
+    <div class="container">
+        <div class="text-center mb-5">
+            <h2 class="section-title">How It Works</h2>
+            <p class="section-subtitle">Simple, powerful, and efficient</p>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-3">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <h4 class="step-title">Upload</h4>
+                    <p class="step-description">Upload your PDF or image documents</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <h4 class="step-title">Process</h4>
+                    <p class="step-description">Choose your OCR engine and let AI extract the data</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <h4 class="step-title">Analyze</h4>
+                    <p class="step-description">Use AI to structure data according to your schema</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="step-card">
+                    <div class="step-number">4</div>
+                    <h4 class="step-title">Export</h4>
+                    <p class="step-description">Get structured JSON data ready for use</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA Section -->
+<section class="cta-section py-5">
+    <div class="container">
+        <div class="cta-box">
+            <h2 class="cta-title">Ready to Transform Your Documents?</h2>
+            <p class="cta-subtitle">Start extracting structured data from your documents today</p>
+            <a href="{% url 'document_create' %}" class="btn btn-light btn-lg mt-3">
+                Get Started Now
+                <i class="ms-2">→</i>
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Recent Documents Section (if any) -->
+{% if documents %}
+<section class="recent-documents-section py-5">
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="section-title mb-0">Recent Documents</h2>
+            <a href="{% url 'document_list' %}" class="btn btn-outline-primary">View All</a>
+        </div>
+        <div class="row g-4">
+            {% for document in documents|slice:":6" %}
+            <div class="col-md-4">
+                <div class="document-card-modern">
+                    <div class="document-card-header">
+                        <div class="document-icon">📄</div>
+                        <div class="document-type">{{ document.file_type|upper }}</div>
+                    </div>
+                    <div class="document-card-body">
+                        <h5 class="document-title">{{ document.title }}</h5>
+                        <p class="document-meta">
+                            <span>{{ document.total_pages }} pages</span>
+                            <span>•</span>
+                            <span>{{ document.ocr_engine|title }}</span>
+                        </p>
+                    </div>
+                    <div class="document-card-footer">
+                        <a href="{% url 'document_detail' document.pk %}" class="btn btn-sm btn-primary">View Details</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --primary-color: #6366f1;
+        --primary-dark: #4f46e5;
+        --gradient-start: #6366f1;
+        --gradient-end: #8b5cf6;
+        --text-dark: #1f2937;
+        --text-light: #6b7280;
+        --bg-light: #f9fafb;
+    }
+
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        color: var(--text-dark);
+    }
+
+    /* Hero Section */
+    .hero-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 80px 0;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .hero-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M 100 0 L 0 0 0 100" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+        opacity: 0.3;
+    }
+
+    .hero-content {
+        position: relative;
+        z-index: 1;
+    }
+
+    .hero-title {
+        font-size: 3.5rem;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-bottom: 1.5rem;
+    }
+
+    .gradient-text {
+        background: linear-gradient(120deg, #fbbf24, #f59e0b);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .hero-subtitle {
+        font-size: 1.25rem;
+        line-height: 1.6;
+        margin-bottom: 2rem;
+        opacity: 0.95;
+    }
+
+    .hero-buttons .btn {
+        padding: 12px 32px;
+        font-size: 1.1rem;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+    .hero-buttons .btn-primary {
+        background: white;
+        color: var(--primary-color);
+        border: none;
+    }
+
+    .hero-buttons .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+
+    .hero-buttons .btn-outline-light {
+        border: 2px solid white;
+        background: transparent;
+    }
+
+    .hero-buttons .btn-outline-light:hover {
+        background: white;
+        color: var(--primary-color);
+    }
+
+    .hero-stats {
+        display: flex;
+        gap: 3rem;
+    }
+
+    .stat-item {
+        text-align: center;
+    }
+
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+
+    .stat-label {
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+
+    /* Hero Visual */
+    .hero-visual {
+        position: relative;
+        height: 500px;
+    }
+
+    .floating-card {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 16px;
+        padding: 20px;
+        text-align: center;
+        animation: float 6s ease-in-out infinite;
+    }
+
+    .card-icon {
+        font-size: 3rem;
+        margin-bottom: 10px;
+    }
+
+    .card-text {
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    .card-1 {
+        top: 10%;
+        left: 10%;
+        animation-delay: 0s;
+    }
+
+    .card-2 {
+        top: 30%;
+        right: 10%;
+        animation-delay: 1.5s;
+    }
+
+    .card-3 {
+        bottom: 30%;
+        left: 5%;
+        animation-delay: 3s;
+    }
+
+    .card-4 {
+        bottom: 10%;
+        right: 15%;
+        animation-delay: 4.5s;
+    }
+
+    @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-20px); }
+    }
+
+    /* Features Section */
+    .features-section {
+        padding: 80px 0;
+    }
+
+    .section-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        color: var(--text-dark);
+    }
+
+    .section-subtitle {
+        font-size: 1.2rem;
+        color: var(--text-light);
+    }
+
+    .feature-card {
+        background: white;
+        border-radius: 16px;
+        padding: 2rem;
+        height: 100%;
+        transition: all 0.3s ease;
+        border: 1px solid #e5e7eb;
+    }
+
+    .feature-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        border-color: var(--primary-color);
+    }
+
+    .feature-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+
+    .feature-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: var(--text-dark);
+    }
+
+    .feature-description {
+        color: var(--text-light);
+        line-height: 1.6;
+    }
+
+    /* How It Works Section */
+    .how-it-works-section {
+        padding: 80px 0;
+    }
+
+    .step-card {
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .step-number {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0 auto 1.5rem;
+    }
+
+    .step-title {
+        font-size: 1.3rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--text-dark);
+    }
+
+    .step-description {
+        color: var(--text-light);
+    }
+
+    /* CTA Section */
+    .cta-section {
+        padding: 80px 0;
+        background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+    }
+
+    .cta-box {
+        background: white;
+        border-radius: 24px;
+        padding: 4rem;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+    }
+
+    .cta-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        color: var(--text-dark);
+    }
+
+    .cta-subtitle {
+        font-size: 1.2rem;
+        color: var(--text-light);
+    }
+
+    .cta-box .btn-light {
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        font-weight: 600;
+    }
+
+    .cta-box .btn-light:hover {
+        background: var(--primary-dark);
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+    }
+
+    /* Recent Documents */
+    .recent-documents-section {
+        padding: 80px 0;
+    }
+
+    .document-card-modern {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #e5e7eb;
+        transition: all 0.3s ease;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .document-card-modern:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(0,0,0,0.1);
+        border-color: var(--primary-color);
+    }
+
+    .document-card-header {
+        background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .document-icon {
+        font-size: 2rem;
+    }
+
+    .document-type {
+        background: var(--primary-color);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .document-card-body {
+        padding: 1.5rem;
+        flex-grow: 1;
+    }
+
+    .document-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--text-dark);
+    }
+
+    .document-meta {
+        font-size: 0.9rem;
+        color: var(--text-light);
+    }
+
+    .document-card-footer {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .min-vh-75 {
+        min-height: 75vh;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .hero-title {
+            font-size: 2.5rem;
+        }
+
+        .hero-stats {
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .hero-visual {
+            height: 300px;
+            margin-top: 3rem;
+        }
+
+        .section-title {
+            font-size: 2rem;
+        }
+    }
+</style>
+{% endblock %}

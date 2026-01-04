@@ -1,0 +1,78 @@
+{% extends 'core/base.html' %}
+
+{% block title %}{{ document.title }} - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>{{ document.title }}</h1>
+    <div>
+        <a href="{% url 'document_update' document.pk %}" class="btn btn-secondary">Edit</a>
+        <a href="{% url 'document_delete' document.pk %}" class="btn btn-danger">Delete</a>
+        <a href="{% url 'document_list' %}" class="btn btn-outline-secondary">Back to List</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Document Information</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Title:</strong> {{ document.title }}</p>
+                {% if document.description %}
+                <p><strong>Description:</strong> {{ document.description }}</p>
+                {% endif %}
+                <p><strong>File Type:</strong> {{ document.file_type|upper }}</p>
+                <p><strong>OCR Engine:</strong> {{ document.ocr_engine|title }}</p>
+                <p><strong>Total Pages:</strong> {{ document.total_pages }}</p>
+                <p><strong>Total Text Length:</strong> {{ document.total_text_length }} characters</p>
+                <p><strong>Created:</strong> {{ document.created_at|date:"F d, Y H:i" }}</p>
+                <p><strong>Updated:</strong> {{ document.updated_at|date:"F d, Y H:i" }}</p>
+                <p><strong>File:</strong> 
+                    <a href="{{ document.file.url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                        View Original File
+                    </a>
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>Pages ({{ pages.count }})</h5>
+            </div>
+            <div class="card-body">
+                {% if pages %}
+                    {% for page in pages %}
+                    <div class="mb-4 border-bottom pb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="text-primary mb-0">Page {{ page.page_number }}</h6>
+                            <a href="{% url 'page_preview' page.pk %}" class="btn btn-sm btn-outline-primary">
+                                Preview with JSON
+                            </a>
+                        </div>
+                        {% if page.text %}
+                        <div class="page-content">
+                            {{ page.text|linebreaks|truncatewords:50 }}
+                        </div>
+                        {% else %}
+                        <p class="text-muted">No text extracted from this page.</p>
+                        {% endif %}
+                        {% if page.json_data %}
+                        <small class="text-success">
+                            <i class="bi bi-check-circle"></i> JSON data available
+                        </small>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No pages found for this document.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
