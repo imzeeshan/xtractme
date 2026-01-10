@@ -346,18 +346,33 @@ class DocumentAdmin(ModelAdmin):
                 # If no pages selected, use all pages
                 selected_pages = document.pages.order_by('page_number')
             
+            # Collect both text and JSON data from pages
             for page in selected_pages:
                 page_text = page.text or ''
-                if page_text.strip():
-                    pages_data.append({
+                page_json = page.json_data if page.json_data else None
+                
+                # Include page if it has either text or JSON data
+                if page_text.strip() or page_json:
+                    page_data = {
                         'page_number': page.page_number,
                         'text': page_text
-                    })
+                    }
+                    # Add JSON data if available
+                    if page_json:
+                        import json
+                        page_data['json_data'] = page_json
+                        # If text is empty but JSON has text, try to extract it
+                        if not page_text.strip() and isinstance(page_json, dict):
+                            json_text = page_json.get('text', '')
+                            if json_text and json_text.strip():
+                                page_data['text'] = json_text.strip()
+                    
+                    pages_data.append(page_data)
             
             if not pages_data:
                 return JsonResponse({
                     'success': False,
-                    'error': 'No text content found in selected pages.'
+                    'error': 'No text or JSON content found in selected pages.'
                 }, status=400)
             
             # Use the prompts module to generate the prompt

@@ -498,19 +498,50 @@ class PromptManager:
         Args:
             prompt_name: Name of the prompt template
             document_title: Title of the document
-            pages_data: List of page data dicts with 'page_number' and 'text' keys
+            pages_data: List of page data dicts with 'page_number', 'text', and optionally 'json_data' keys
             use_database: If True, check database first for prompts
             **kwargs: Additional variables
             
         Returns:
             Formatted prompt string
         """
+        import json
         # Combine all pages into a single content string
         document_content = f"Document: {document_title}\n\n"
+        json_data_all = []  # Collect all JSON data for structured analysis
+        
         for page_data in pages_data:
             page_num = page_data.get('page_number', '?')
             page_text = page_data.get('text', '')
+            page_json = page_data.get('json_data')
+            
             document_content += f"--- Page {page_num} ---\n{page_text}\n\n"
+            
+            # If JSON data exists, include it in the content
+            if page_json:
+                try:
+                    json_str = json.dumps(page_json, indent=2, ensure_ascii=False)
+                    document_content += f"--- Page {page_num} Structured Data (JSON) ---\n{json_str}\n\n"
+                    json_data_all.append({
+                        'page_number': page_num,
+                        'json_data': page_json
+                    })
+                except Exception:
+                    # If JSON serialization fails, skip it
+                    pass
+        
+        # If we have JSON data, include it as a separate variable for prompts that use it
+        kwargs_with_json = kwargs.copy()
+        if json_data_all:
+            # Combine all JSON data into a single structure
+            if len(json_data_all) == 1:
+                kwargs_with_json['json_data'] = json_data_all[0]['json_data']
+            else:
+                # Multiple pages with JSON - create a combined structure
+                kwargs_with_json['json_data'] = {
+                    'pages': json_data_all,
+                    'total_pages_with_json': len(json_data_all)
+                }
         
         return cls.format_prompt(
             prompt_name=prompt_name,
@@ -518,7 +549,7 @@ class PromptManager:
             document_content=document_content,
             total_pages=len(pages_data),
             use_database=use_database,
-            **kwargs
+            **kwargs_with_json
         )
     
     @classmethod
