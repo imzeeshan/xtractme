@@ -422,16 +422,19 @@ def process_document_file(document):
         # If OLMOCR is selected, use it for full PDF processing with JSON extraction
         if ocr_engine_lower == 'olmocr':
             logger.info("Attempting OLMOCR JSON extraction...")
-            from .ocr_utils import extract_pages_with_olmocr_json, olmocr_available
+            from .ocr_utils import extract_pages_with_olmocr_json, extract_text_with_olmocr, olmocr_available
             
             if olmocr_available:
                 try:
                     # Use OLMOCR to extract page-by-page JSON data
                     pages_data = extract_pages_with_olmocr_json(file_path)
                     
-                    if pages_data:
-                        # OLMOCR successfully extracted data
-                        logger.info(f"OLMOCR extracted {len(pages_data)} pages with JSON")
+                    # Check if we got any actual text content
+                    has_content = any(page_info.get('text', '').strip() for page_info in pages_data) if pages_data else False
+                    
+                    if pages_data and has_content:
+                        # OLMOCR successfully extracted data with content
+                        logger.info(f"OLMOCR extracted {len(pages_data)} pages with JSON and text content")
                         
                         # Create Page objects with JSON data
                         for page_info in pages_data:
@@ -450,6 +453,34 @@ def process_document_file(document):
                         
                         logger.info(f"Successfully created/updated {len(pages_data)} page objects with OLMOCR JSON")
                         return
+                    elif pages_data and not has_content:
+                        # OLMOCR ran but produced no text - try fallback extraction
+                        logger.warning("OLMOCR JSON extraction produced pages but no text content. Trying fallback text extraction...")
+                        try:
+                            # Try simple text extraction as fallback
+                            full_text = extract_text_with_olmocr(file_path, file_type='pdf')
+                            if full_text and not full_text.startswith("Error") and full_text.strip():
+                                logger.info("OLMOCR fallback text extraction succeeded, updating pages...")
+                                # Update pages with extracted text
+                                for page_info in pages_data:
+                                    page_obj, created = Page.objects.get_or_create(
+                                        document=document,
+                                        page_number=page_info['page_number'],
+                                        defaults={'text': '', 'json_data': page_info.get('json_data', {})}
+                                    )
+                                    # Update JSON data with extracted text if available
+                                    if page_info.get('json_data'):
+                                        page_info['json_data']['text'] = full_text[:len(full_text)//len(pages_data)] if pages_data else ''
+                                    if not created:
+                                        page_obj.json_data = page_info.get('json_data', {})
+                                        page_obj.save()
+                                logger.info("Updated pages with fallback text extraction")
+                                return
+                        except Exception as fallback_error:
+                            logger.error(f"OLMOCR fallback extraction also failed: {str(fallback_error)}")
+                        
+                        logger.warning("OLMOCR produced pages but no text content - falling back to traditional processing")
+                        # Fall through to traditional processing
                     else:
                         logger.warning("OLMOCR returned no page data - falling back to traditional processing")
                         # Fall through to traditional processing

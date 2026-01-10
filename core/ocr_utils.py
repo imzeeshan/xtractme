@@ -1071,38 +1071,68 @@ def extract_pages_with_olmocr_json(file_path):
                 logger.info(f"Running OLMOCR on entire PDF: {' '.join(cmd)}")
                 
                 try:
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=600  # 10 minute timeout for entire PDF
-                    )
-                    
-                    # Log any errors
-                    if result.returncode != 0:
-                        logger.error(f"OLMOCR command failed (return code {result.returncode}): {result.stderr}")
-                    if result.stderr:
-                        logger.warning(f"OLMOCR stderr: {result.stderr[:500]}")  # Log first 500 chars
+                        result = subprocess.run(
+                            cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=600,  # 10 minute timeout for entire PDF
+                            check=False  # Don't raise exception on non-zero return
+                        )
+                        
+                        # Log detailed information about the command execution
+                        logger.info(f"OLMOCR command completed with return code: {result.returncode}")
+                        if result.returncode != 0:
+                            logger.error(f"OLMOCR command failed (return code {result.returncode})")
+                            logger.error(f"OLMOCR stderr: {result.stderr[:1000]}")  # Log first 1000 chars
+                        if result.stderr:
+                            logger.warning(f"OLMOCR stderr: {result.stderr[:1000]}")
+                        if result.stdout and not result.stdout.strip().startswith('INFO') and not result.stdout.strip().startswith('WARNING'):
+                            logger.info(f"OLMOCR stdout (first 500 chars): {result.stdout[:500]}")
+                        
+                        # If command failed, try to provide helpful error message
+                        if result.returncode != 0:
+                            error_msg = result.stderr or result.stdout or "Unknown error"
+                            if 'not found' in error_msg.lower() or 'No module named' in error_msg:
+                                logger.error("OLMOCR module not found. Install with: pip install olmocr[gpu]")
+                            elif 'timeout' in error_msg.lower():
+                                logger.error("OLMOCR processing timed out. File may be too large or system too slow.")
                     
                 except subprocess.TimeoutExpired:
                     logger.error("OLMOCR processing timed out")
                     return []
                 
-                # OLMOCR outputs to workspace_dir/markdown/filename.md
-                # Check multiple possible output locations
-                output_paths = [
+                # OLMOCR outputs to workspace_dir/markdown/filename.md or nested directories
+                # Check multiple possible output locations recursively
+                output_paths = []
+                
+                # Standard locations
+                standard_paths = [
                     os.path.join(workspace_dir, 'markdown', f"{file_name}.md"),
                     os.path.join(workspace_dir, 'markdown', f"{Path(file_path).name}.md"),
                     os.path.join(workspace_dir, f"{file_name}.md"),
                     os.path.join(workspace_dir, 'markdown', f"{file_name}"),
+                    # Nested paths that OLMOCR might use
+                    os.path.join(workspace_dir, 'markdown', file_name, f"{file_name}.md"),
+                    os.path.join(workspace_dir, 'markdown', 'auto', f"{file_name}.md"),
+                    os.path.join(workspace_dir, file_name, 'markdown', f"{file_name}.md"),
                 ]
+                output_paths.extend(standard_paths)
                 
-                # Also search for any .md files in the markdown directory
+                # Recursively search for any .md files in workspace directory
                 markdown_dir = os.path.join(workspace_dir, 'markdown')
                 if os.path.exists(markdown_dir):
-                    for md_file in os.listdir(markdown_dir):
+                    for root, dirs, files in os.walk(markdown_dir):
+                        for md_file in files:
+                            if md_file.endswith('.md'):
+                                output_paths.append(os.path.join(root, md_file))
+                
+                # Also check workspace root and subdirectories
+                for root, dirs, files in os.walk(workspace_dir):
+                    for md_file in files:
                         if md_file.endswith('.md'):
-                            output_paths.append(os.path.join(markdown_dir, md_file))
+                            full_path = os.path.join(root, md_file)
+                            if full_path not in output_paths:
+                                output_paths.append(full_path)
                 
                 markdown_content = None
                 found_path = None

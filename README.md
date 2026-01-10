@@ -3,6 +3,10 @@ Document Extraction with Django
 
 A Django-based document extraction and OCR application with support for multiple OCR engines including MinerU, OLMOCR, Tesseract, DeepSeek OCR, PaddleOCR, TrOCR, Donut, and more.
 
+## Screenshot
+
+![xtractme Screenshot](screenshot.png)
+
 ## Prerequisites
 
 - Python 3.8 or higher
