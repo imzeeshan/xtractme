@@ -419,32 +419,39 @@ def process_document_file(document):
                 logger.info("MinerU not available or returned no data. Falling back to traditional PDF processing.")
                 # Fall through to traditional processing
         
-        # If OLMOCR is selected, use it for full PDF processing
+        # If OLMOCR is selected, use it for full PDF processing with JSON extraction
         if ocr_engine_lower == 'olmocr':
-            logger.info("Attempting OLMOCR extraction...")
-            from .ocr_utils import extract_text_with_olmocr, olmocr_available
+            logger.info("Attempting OLMOCR JSON extraction...")
+            from .ocr_utils import extract_pages_with_olmocr_json, olmocr_available
             
             if olmocr_available:
                 try:
-                    # OLMOCR processes the entire PDF and returns markdown
-                    full_text = extract_text_with_olmocr(file_path, file_type='pdf')
+                    # Use OLMOCR to extract page-by-page JSON data
+                    pages_data = extract_pages_with_olmocr_json(file_path)
                     
-                    if full_text and not full_text.startswith("Error"):
-                        # For now, create a single page with all text
-                        # TODO: Parse markdown to extract page-by-page content if needed
-                        page_obj, created = Page.objects.get_or_create(
-                            document=document,
-                            page_number=1,
-                            defaults={'text': full_text.strip()}
-                        )
-                        if not created:
-                            page_obj.text = full_text.strip()
-                            page_obj.save()
+                    if pages_data:
+                        # OLMOCR successfully extracted data
+                        logger.info(f"OLMOCR extracted {len(pages_data)} pages with JSON")
                         
-                        logger.info(f"Successfully processed PDF with OLMOCR (text length: {len(full_text)})")
+                        # Create Page objects with JSON data
+                        for page_info in pages_data:
+                            page_obj, created = Page.objects.get_or_create(
+                                document=document,
+                                page_number=page_info['page_number'],
+                                defaults={
+                                    'text': page_info.get('text', ''),
+                                    'json_data': page_info.get('json_data', {})
+                                }
+                            )
+                            if not created:
+                                page_obj.text = page_info.get('text', '')
+                                page_obj.json_data = page_info.get('json_data', {})
+                                page_obj.save()
+                        
+                        logger.info(f"Successfully created/updated {len(pages_data)} page objects with OLMOCR JSON")
                         return
                     else:
-                        logger.warning(f"OLMOCR returned error: {full_text}")
+                        logger.warning("OLMOCR returned no page data - falling back to traditional processing")
                         # Fall through to traditional processing
                 except Exception as e:
                     logger.error(f"Error with OLMOCR: {str(e)}", exc_info=True)
@@ -502,12 +509,21 @@ def process_document_file(document):
             # Try to extract text directly first (works for PDFs with text layers)
             page_text = page.get_text()
             
+            # Track if OCR was used
+            used_ocr = False
+            pix = None
+            page_width = None
+            page_height = None
+            
             # If no text found, try OCR (only if OCR engine is available)
             if not page_text.strip():
                 logger.info(f"Page {page_num + 1} has no text layer, attempting OCR with engine: {document.ocr_engine}...")
                 # Render page to an image
                 pix = page.get_pixmap()
+                page_width = pix.width
+                page_height = pix.height
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                used_ocr = True
                 
                 try:
                     ocr_engine_lower = document.ocr_engine.lower() if document.ocr_engine else 'mineru'
@@ -515,12 +531,14 @@ def process_document_file(document):
                         # PyMuPDF doesn't do OCR - just leave text empty if no text layer found
                         logger.info("PyMuPDF selected - no OCR fallback, leaving text empty for page without text layer")
                         page_text = ""
+                        used_ocr = False
                     elif ocr_engine_lower == 'tesseract':
                         if pytesseract:
                             page_text = pytesseract.image_to_string(img)
                         else:
                             logger.warning("Tesseract selected but pytesseract not installed - skipping OCR")
                             page_text = ""  # Will create page with empty text
+                            used_ocr = False
                     elif ocr_engine_lower == 'deepseek':
                         page_text = extract_text_with_deepseek_from_image(img)
                     elif ocr_engine_lower == 'pdfplumber':
@@ -543,6 +561,7 @@ def process_document_file(document):
                         else:
                             logger.warning("PaddleOCR selected but not available - skipping OCR")
                             page_text = ""
+                            used_ocr = False
                     elif ocr_engine_lower == 'trocr':
                         from .ocr_utils import trocr_processor, trocr_model, trocr_available
                         if trocr_available and trocr_processor and trocr_model:
@@ -552,6 +571,7 @@ def process_document_file(document):
                         else:
                             logger.warning("TrOCR selected but not available - skipping OCR")
                             page_text = ""
+                            used_ocr = False
                     elif ocr_engine_lower == 'donut':
                         from .ocr_utils import donut_processor, donut_model, donut_available
                         if donut_available and donut_processor and donut_model:
@@ -588,36 +608,61 @@ def process_document_file(document):
                         else:
                             logger.warning("Donut selected but not available - skipping OCR")
                             page_text = ""
+                            used_ocr = False
                     elif ocr_engine_lower == 'olmocr':
                         from .ocr_utils import extract_text_with_olmocr_from_image
                         page_text = extract_text_with_olmocr_from_image(img)
                         if page_text and page_text.startswith("Error"):
                             logger.warning(f"OLMOCR failed: {page_text}")
                             page_text = ""
+                            used_ocr = False
                     else:
                         # Unknown OCR engine - log warning and use empty text
                         logger.warning(f"Unknown OCR engine '{document.ocr_engine}' (normalized: '{ocr_engine_lower}') for PDF page {page_num + 1} - creating page with empty text")
                         page_text = ""
+                        used_ocr = False
                 except Exception as ocr_error:
                     logger.warning(f"OCR failed for page {page_num + 1}: {str(ocr_error)}")
                     page_text = ""  # Create page anyway, even without text
+                    used_ocr = False
+            else:
+                # Text was found directly from PDF, get page dimensions
+                try:
+                    rect = page.rect
+                    page_width = rect.width
+                    page_height = rect.height
+                except:
+                    pass
+            
+            # Create basic JSON data structure for any OCR engine
+            json_data = {
+                'ocr_engine': ocr_engine_lower,
+                'page_number': page_num + 1,
+                'text': page_text.strip() if page_text else '',
+                'has_ocr': used_ocr,
+                'extraction_method': 'ocr' if used_ocr else 'direct',
+                'page_width': page_width,
+                'page_height': page_height,
+            }
             
             # Use get_or_create to avoid duplicate pages
             page_obj, created = Page.objects.get_or_create(
                 document=document,
                 page_number=page_num + 1,
                 defaults={
-                    'text': page_text.strip() if page_text else ''
+                    'text': page_text.strip() if page_text else '',
+                    'json_data': json_data
                 }
             )
             
-            # Update text if page already existed
+            # Update text and JSON if page already existed
             if not created:
                 page_obj.text = page_text.strip() if page_text else ''
+                page_obj.json_data = json_data
                 page_obj.save()
             
             pages_created += 1
-            logger.info(f"{'Created' if created else 'Updated'} page {page_num + 1} (text length: {len(page_text)})")
+            logger.info(f"{'Created' if created else 'Updated'} page {page_num + 1} (text length: {len(page_text)}, has JSON: True)")
         
         doc.close()
         logger.info(f"Successfully processed {total_pages} pages, created {pages_created} Page objects")
@@ -657,11 +702,22 @@ def process_document_file(document):
             logger.error(f"Unknown OCR engine: {document.ocr_engine} (normalized: '{ocr_engine_lower}') - this should not happen after validation")
             page_text = f"Error: Unknown OCR engine '{document.ocr_engine}'. Please select a valid OCR engine."
         
-        # Create single Page object
+        # Create basic JSON data structure for image processing
+        json_data = {
+            'ocr_engine': ocr_engine_lower,
+            'page_number': 1,
+            'text': page_text.strip() if page_text else '',
+            'has_ocr': True,  # Images always use OCR
+            'extraction_method': 'ocr',
+            'file_type': 'image',
+        }
+        
+        # Create single Page object with JSON data
         Page.objects.create(
             document=document,
             page_number=1,
-            text=page_text.strip() if page_text else ''
+            text=page_text.strip() if page_text else '',
+            json_data=json_data
         )
 
 

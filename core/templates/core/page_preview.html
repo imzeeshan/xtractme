@@ -54,7 +54,7 @@
         
         <div class="card mt-3">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5>MinerU JSON Data</h5>
+                <h5>JSON Data</h5>
                 <button class="btn btn-sm btn-outline-secondary" onclick="copyJson()">
                     Copy JSON
                 </button>
@@ -65,7 +65,7 @@
                 {% else %}
                 <div class="alert alert-warning">
                     <p>No JSON data available for this page.</p>
-                    <p class="mb-0"><small>This page may have been processed with a different OCR engine or before MinerU JSON extraction was enabled.</small></p>
+                    <p class="mb-0"><small>This page may have been processed without JSON extraction support, or JSON data is not available for the selected OCR engine.</small></p>
                 </div>
                 {% endif %}
             </div>

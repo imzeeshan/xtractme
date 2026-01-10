@@ -45,7 +45,7 @@ class Page(models.Model):
     )
     page_number = models.PositiveIntegerField()
     text = models.TextField(blank=True)
-    json_data = models.JSONField(blank=True, null=True, help_text="Structured JSON data from MinerU")
+    json_data = models.JSONField(blank=True, null=True, help_text="Structured JSON data from OCR engine")
     image = models.ImageField(upload_to='pages/%Y/%m/%d/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

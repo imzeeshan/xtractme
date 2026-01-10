@@ -502,7 +502,7 @@ class PageAdmin(ModelAdmin):
         ('Content', {
             'fields': ('text', 'image')
         }),
-        ('MinerU JSON Data', {
+        ('JSON Data', {
             'fields': ('json_data', 'json_preview'),
             'classes': ('collapse',)
         }),
