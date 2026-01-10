@@ -361,11 +361,25 @@ class DocumentAdmin(ModelAdmin):
                     if page_json:
                         import json
                         page_data['json_data'] = page_json
+                        
                         # If text is empty but JSON has text, try to extract it
                         if not page_text.strip() and isinstance(page_json, dict):
+                            # Try to get text directly from JSON
                             json_text = page_json.get('text', '')
                             if json_text and json_text.strip():
                                 page_data['text'] = json_text.strip()
+                            else:
+                                # Try to extract text from blocks array
+                                blocks = page_json.get('blocks', [])
+                                if blocks and isinstance(blocks, list):
+                                    text_parts = []
+                                    for block in blocks:
+                                        if isinstance(block, dict):
+                                            block_text = block.get('text', '')
+                                            if block_text and block_text.strip():
+                                                text_parts.append(block_text.strip())
+                                    if text_parts:
+                                        page_data['text'] = '\n\n'.join(text_parts)
                     
                     pages_data.append(page_data)
             
@@ -409,12 +423,92 @@ class DocumentAdmin(ModelAdmin):
             
             # Format the prompt using the PromptManager (will check database first, then built-in)
             try:
+                # Log what we're about to send
+                logger.info(f"Formatting prompt '{prompt_type}' for document '{document.title}' with {len(pages_data)} pages")
+                logger.info(f"Pages data summary: {[(p.get('page_number'), len(p.get('text', '')), bool(p.get('json_data'))) for p in pages_data[:3]]}...")
+                
                 prompt = PromptManager.format_document_prompt(
                     prompt_name=prompt_type,
                     document_title=document.title,
                     pages_data=pages_data,
                     use_database=True  # Check database first
                 )
+                
+                # Log the generated prompt length (first 500 chars) to verify content is included
+                logger.info(f"Generated prompt length: {len(prompt)} characters")
+                logger.info(f"Prompt preview (first 1000 chars): {prompt[:1000]}")
+                
+                # Check if document content is actually in the prompt
+                # Some custom prompts from database might not include {document_content}
+                has_page_content = '--- Page' in prompt or 'Page 1' in prompt or 'Page 2' in prompt
+                has_placeholder = '{document_content}' in prompt
+                
+                if not has_page_content and has_placeholder:
+                    logger.warning("WARNING: Prompt template has {document_content} placeholder but content was not inserted!")
+                    # Build content string manually and replace placeholder
+                    content_str = f"Document: {document.title}\n\n"
+                    for page_data in pages_data:
+                        page_num = page_data.get('page_number', '?')
+                        page_text = page_data.get('text', '')
+                        page_json = page_data.get('json_data')
+                        
+                        # Extract text from JSON if needed
+                        if not page_text.strip() and page_json and isinstance(page_json, dict):
+                            json_text = page_json.get('text', '')
+                            if json_text and json_text.strip():
+                                page_text = json_text.strip()
+                            else:
+                                # Try blocks
+                                blocks = page_json.get('blocks', [])
+                                if blocks:
+                                    text_parts = [b.get('text', '') for b in blocks if isinstance(b, dict) and b.get('text')]
+                                    if text_parts:
+                                        page_text = '\n\n'.join(text_parts)
+                        
+                        if page_text.strip():
+                            content_str += f"--- Page {page_num} ---\n{page_text}\n\n"
+                        elif page_json:
+                            # Include JSON even if no text
+                            try:
+                                json_str = json.dumps(page_json, indent=2, ensure_ascii=False)
+                                content_str += f"--- Page {page_num} (JSON Data) ---\n{json_str}\n\n"
+                            except:
+                                pass
+                    
+                    # Replace placeholder with actual content
+                    prompt = prompt.replace('{document_content}', content_str.strip())
+                    logger.info(f"Manually inserted document content. New prompt length: {len(prompt)} characters")
+                
+                elif not has_page_content and not has_placeholder:
+                    logger.warning("WARNING: Custom prompt template may not support document_content variable!")
+                    # Append content at the end as a fallback
+                    content_str = f"\n\n=== DOCUMENT CONTENT ===\n\nDocument: {document.title}\n\n"
+                    for page_data in pages_data:
+                        page_num = page_data.get('page_number', '?')
+                        page_text = page_data.get('text', '')
+                        page_json = page_data.get('json_data')
+                        
+                        if not page_text.strip() and page_json and isinstance(page_json, dict):
+                            json_text = page_json.get('text', '')
+                            if json_text and json_text.strip():
+                                page_text = json_text.strip()
+                        
+                        if page_text.strip():
+                            content_str += f"--- Page {page_num} ---\n{page_text}\n\n"
+                    
+                    if content_str.strip() and content_str != f"\n\n=== DOCUMENT CONTENT ===\n\nDocument: {document.title}\n\n":
+                        prompt += content_str
+                        logger.info("Appended document content to prompt as fallback")
+                
+                # Final verification
+                if '--- Page' not in prompt and len(prompt) < 500:
+                    logger.error(f"CRITICAL: Prompt appears to have no content! Length: {len(prompt)}")
+                    # Build minimal content from JSON at least
+                    minimal_content = f"\n\nDocument Title: {document.title}\n"
+                    minimal_content += f"Total Pages: {len(pages_data)}\n"
+                    minimal_content += "Note: Pages were processed but no extractable text was found. "
+                    minimal_content += "JSON structured data may be available in the page records.\n"
+                    prompt += minimal_content
                 
                 # If a schema is provided, append schema instructions to the prompt
                 if schema_data:

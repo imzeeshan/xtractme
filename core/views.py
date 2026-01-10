@@ -454,30 +454,54 @@ def process_document_file(document):
                         logger.info(f"Successfully created/updated {len(pages_data)} page objects with OLMOCR JSON")
                         return
                     elif pages_data and not has_content:
-                        # OLMOCR ran but produced no text - try fallback extraction
-                        logger.warning("OLMOCR JSON extraction produced pages but no text content. Trying fallback text extraction...")
+                        # OLMOCR ran but produced no text - try fallback with PyMuPDF first (direct text extraction)
+                        logger.warning("OLMOCR JSON extraction produced pages but no text content. Trying fallback with PyMuPDF...")
                         try:
-                            # Try simple text extraction as fallback
-                            full_text = extract_text_with_olmocr(file_path, file_type='pdf')
-                            if full_text and not full_text.startswith("Error") and full_text.strip():
-                                logger.info("OLMOCR fallback text extraction succeeded, updating pages...")
-                                # Update pages with extracted text
-                                for page_info in pages_data:
+                            # Try PyMuPDF direct text extraction as fallback
+                            import fitz
+                            doc = fitz.open(file_path)
+                            pages_with_text = []
+                            
+                            for page_num in range(len(doc)):
+                                page = doc.load_page(page_num)
+                                page_text = page.get_text()
+                                
+                                if page_text and page_text.strip():
+                                    # Update the page with PyMuPDF text
                                     page_obj, created = Page.objects.get_or_create(
                                         document=document,
-                                        page_number=page_info['page_number'],
-                                        defaults={'text': '', 'json_data': page_info.get('json_data', {})}
+                                        page_number=page_num + 1,
+                                        defaults={'text': '', 'json_data': {}}
                                     )
-                                    # Update JSON data with extracted text if available
-                                    if page_info.get('json_data'):
-                                        page_info['json_data']['text'] = full_text[:len(full_text)//len(pages_data)] if pages_data else ''
-                                    if not created:
-                                        page_obj.json_data = page_info.get('json_data', {})
-                                        page_obj.save()
-                                logger.info("Updated pages with fallback text extraction")
+                                    
+                                    # Update with PyMuPDF text and merge JSON data
+                                    page_obj.text = page_text.strip()
+                                    if page_num < len(pages_data) and pages_data[page_num].get('json_data'):
+                                        json_data = pages_data[page_num]['json_data']
+                                        json_data['text'] = page_text.strip()
+                                        json_data['fallback_extraction'] = 'pymupdf'
+                                        page_obj.json_data = json_data
+                                    else:
+                                        page_obj.json_data = {
+                                            'ocr_engine': 'olmocr',
+                                            'page_number': page_num + 1,
+                                            'text': page_text.strip(),
+                                            'fallback_extraction': 'pymupdf',
+                                            'extraction_method': 'direct'
+                                        }
+                                    page_obj.save()
+                                    pages_with_text.append(page_num + 1)
+                            
+                            doc.close()
+                            
+                            if pages_with_text:
+                                logger.info(f"Fallback PyMuPDF extracted text from {len(pages_with_text)} pages")
                                 return
+                            else:
+                                logger.warning("PyMuPDF also found no text - falling back to traditional processing with OCR")
+                                # Fall through to traditional processing which will try OCR
                         except Exception as fallback_error:
-                            logger.error(f"OLMOCR fallback extraction also failed: {str(fallback_error)}")
+                            logger.error(f"PyMuPDF fallback extraction failed: {str(fallback_error)}")
                         
                         logger.warning("OLMOCR produced pages but no text content - falling back to traditional processing")
                         # Fall through to traditional processing

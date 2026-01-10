@@ -7,6 +7,9 @@ All prompts are designed to work with Ollama and other LLM providers.
 
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -515,7 +518,32 @@ class PromptManager:
             page_text = page_data.get('text', '')
             page_json = page_data.get('json_data')
             
-            document_content += f"--- Page {page_num} ---\n{page_text}\n\n"
+            # If text is empty but JSON exists, try to extract text from JSON
+            if not page_text.strip() and page_json:
+                if isinstance(page_json, dict):
+                    # Try to get text from JSON
+                    json_text = page_json.get('text', '')
+                    if json_text and json_text.strip():
+                        page_text = json_text.strip()
+                    else:
+                        # Try to extract text from blocks
+                        blocks = page_json.get('blocks', [])
+                        if blocks:
+                            text_parts = []
+                            for block in blocks:
+                                if isinstance(block, dict):
+                                    block_text = block.get('text', '')
+                                    if block_text and block_text.strip():
+                                        text_parts.append(block_text.strip())
+                            if text_parts:
+                                page_text = '\n\n'.join(text_parts)
+            
+            # Build document content with text
+            if page_text.strip():
+                document_content += f"--- Page {page_num} ---\n{page_text}\n\n"
+            elif page_json:
+                # Even if no text, include page marker if JSON exists
+                document_content += f"--- Page {page_num} ---\n[Content extracted from structured data below]\n\n"
             
             # If JSON data exists, include it in the content
             if page_json:
@@ -530,6 +558,34 @@ class PromptManager:
                     # If JSON serialization fails, skip it
                     pass
         
+        # Check if we have any actual content (not just headers)
+        content_has_text = any(
+            page_data.get('text', '').strip() or 
+            (page_data.get('json_data') and isinstance(page_data.get('json_data'), dict) and 
+             (page_data.get('json_data').get('text', '').strip() or 
+              page_data.get('json_data').get('blocks')))
+            for page_data in pages_data
+        )
+        
+        # If no content found, add a warning message
+        if not content_has_text:
+            document_content += "\n[Note: Document pages were processed but no extractable text content was found. Please check the JSON structured data sections above for available information.]\n"
+        
+        # Verify document_content has meaningful content (more than just headers)
+        content_stripped = document_content.replace('Document:', '').replace('--- Page', '').replace('---', '').strip()
+        if not content_stripped or len(content_stripped) < 50:
+            logger.warning(f"Document content appears to be empty or minimal: {len(document_content)} chars, content: {document_content[:200]}")
+            # Try to extract any meaningful content from JSON structures
+            fallback_content = f"\n\nDocument Structure:\n- Title: {document_title}\n- Total Pages: {len(pages_data)}\n"
+            for page_data in pages_data:
+                page_num = page_data.get('page_number', '?')
+                page_json = page_data.get('json_data')
+                if page_json and isinstance(page_json, dict):
+                    ocr_engine = page_json.get('ocr_engine', 'unknown')
+                    has_blocks = bool(page_json.get('blocks'))
+                    fallback_content += f"- Page {page_num}: Processed with {ocr_engine}, Has JSON structure: {has_blocks}\n"
+            document_content += fallback_content
+        
         # If we have JSON data, include it as a separate variable for prompts that use it
         kwargs_with_json = kwargs.copy()
         if json_data_all:
@@ -543,7 +599,7 @@ class PromptManager:
                     'total_pages_with_json': len(json_data_all)
                 }
         
-        return cls.format_prompt(
+        formatted_prompt = cls.format_prompt(
             prompt_name=prompt_name,
             document_title=document_title,
             document_content=document_content,
@@ -551,6 +607,16 @@ class PromptManager:
             use_database=use_database,
             **kwargs_with_json
         )
+        
+        # Final check: If the formatted prompt doesn't include document_content, append it
+        # (This handles cases where custom database prompts don't use {document_content})
+        if '{document_content}' not in formatted_prompt and document_content.strip():
+            # Check if document content is already in the prompt
+            if '--- Page' not in formatted_prompt or document_title not in formatted_prompt:
+                logger.info("Appending document content to prompt (template may not include {document_content})")
+                formatted_prompt = formatted_prompt + "\n\n=== DOCUMENT CONTENT ===\n" + document_content
+        
+        return formatted_prompt
     
     @classmethod
     def format_page_prompt(
