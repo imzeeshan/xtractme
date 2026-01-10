@@ -324,18 +324,79 @@ def process_document_file(document):
                             if page_text is None:
                                 page_text = ""
                             
+                            # Extract bounding boxes using pdfplumber words
+                            blocks = []
+                            try:
+                                words = page.extract_words()
+                                if words:
+                                    # Group words into lines based on y-coordinate similarity
+                                    line_groups = {}
+                                    for word in words:
+                                        y_coord = round(word.get('top', 0) / 10) * 10  # Round to nearest 10px for grouping
+                                        if y_coord not in line_groups:
+                                            line_groups[y_coord] = []
+                                        line_groups[y_coord].append(word)
+                                    
+                                    # Create blocks for each line
+                                    for y_coord in sorted(line_groups.keys()):
+                                        line_words = sorted(line_groups[y_coord], key=lambda w: w.get('x0', 0))
+                                        if line_words:
+                                            line_text = ' '.join([w.get('text', '') for w in line_words if w.get('text', '').strip()])
+                                            if line_text.strip():
+                                                # Calculate bounding box for the line
+                                                x_min = min(w.get('x0', 0) for w in line_words)
+                                                y_min = min(w.get('top', 0) for w in line_words)
+                                                x_max = max(w.get('x1', 0) for w in line_words)
+                                                y_max = max(w.get('bottom', 0) for w in line_words)
+                                                
+                                                blocks.append({
+                                                    'type': 'text_line',
+                                                    'text': line_text.strip(),
+                                                    'bbox': [x_min, y_min, x_max - x_min, y_max - y_min],
+                                                    'extraction_method': 'direct'
+                                                })
+                            except Exception as bbox_error:
+                                logger.warning(f"Error extracting bounding boxes from pdfplumber for page {page_num}: {str(bbox_error)}")
+                                blocks = []
+                            
+                            # Get page dimensions
+                            try:
+                                page_width = page.width
+                                page_height = page.height
+                            except:
+                                page_width = None
+                                page_height = None
+                            
+                            # Create JSON data with bounding boxes
+                            json_data = {
+                                'ocr_engine': 'pdfplumber',
+                                'page_number': page_num,
+                                'text': page_text.strip() if page_text else '',
+                                'has_ocr': False,
+                                'extraction_method': 'direct',
+                                'page_width': page_width,
+                                'page_height': page_height,
+                            }
+                            
+                            if blocks:
+                                json_data['blocks'] = blocks
+                            
                             page_obj, created = Page.objects.get_or_create(
                                 document=document,
                                 page_number=page_num,
-                                defaults={'text': page_text.strip()}
+                                defaults={
+                                    'text': page_text.strip(),
+                                    'json_data': json_data
+                                }
                             )
                             
                             if not created:
                                 page_obj.text = page_text.strip()
+                                page_obj.json_data = json_data
                                 page_obj.save()
                             
                             pages_created += 1
-                            logger.info(f"{'Created' if created else 'Updated'} page {page_num} with pdfplumber (text length: {len(page_text)})")
+                            logger.info(f"{'Created' if created else 'Updated'} page {page_num} with pdfplumber (text length: {len(page_text)}, blocks: {len(blocks)})")
                     
                     logger.info(f"Successfully processed {pages_created} pages with pdfplumber")
                     if pages_created == 0:
@@ -360,23 +421,100 @@ def process_document_file(document):
                 
                 for page_num in range(total_pages):
                     page = doc.load_page(page_num)
+                    
+                    # Get page dimensions
+                    try:
+                        rect = page.rect
+                        page_width = rect.width
+                        page_height = rect.height
+                    except:
+                        page_width = None
+                        page_height = None
+                    
                     # Extract text directly using PyMuPDF (no OCR fallback)
                     page_text = page.get_text()
                     if page_text is None:
                         page_text = ""
                     
+                    # Extract bounding boxes using get_text("dict")
+                    blocks = []
+                    try:
+                        text_dict = page.get_text("dict")
+                        if text_dict and 'blocks' in text_dict:
+                            for block in text_dict['blocks']:
+                                if 'lines' in block:  # Text block
+                                    for line in block['lines']:
+                                        line_text_parts = []
+                                        line_bbox = None
+                                        
+                                        for span in line.get('spans', []):
+                                            span_text = span.get('text', '')
+                                            if span_text:
+                                                line_text_parts.append(span_text)
+                                                
+                                                # Get bounding box from span
+                                                bbox_rect = span.get('bbox', [])
+                                                if bbox_rect and len(bbox_rect) == 4:
+                                                    # bbox_rect is [x0, y0, x1, y1] from PyMuPDF
+                                                    x_min = bbox_rect[0]
+                                                    y_min = bbox_rect[1]
+                                                    x_max = bbox_rect[2]
+                                                    y_max = bbox_rect[3]
+                                                    
+                                                    # Update line bbox to encompass all spans
+                                                    if line_bbox is None:
+                                                        line_bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
+                                                    else:
+                                                        # Expand bbox to include this span
+                                                        line_bbox[0] = min(line_bbox[0], x_min)
+                                                        line_bbox[1] = min(line_bbox[1], y_min)
+                                                        line_bbox[2] = max(line_bbox[0] + line_bbox[2], x_max) - line_bbox[0]
+                                                        line_bbox[3] = max(line_bbox[1] + line_bbox[3], y_max) - line_bbox[1]
+                                        
+                                        # Add line as a block if it has text
+                                        if line_text_parts:
+                                            line_text = ''.join(line_text_parts).strip()
+                                            if line_text:
+                                                blocks.append({
+                                                    'type': 'text_line',
+                                                    'text': line_text,
+                                                    'bbox': line_bbox,
+                                                    'extraction_method': 'direct'
+                                                })
+                    except Exception as bbox_error:
+                        logger.warning(f"Error extracting bounding boxes from PyMuPDF for page {page_num + 1}: {str(bbox_error)}")
+                        blocks = []
+                    
+                    # Create JSON data with bounding boxes
+                    json_data = {
+                        'ocr_engine': 'pymupdf',
+                        'page_number': page_num + 1,
+                        'text': page_text.strip() if page_text else '',
+                        'has_ocr': False,
+                        'extraction_method': 'direct',
+                        'page_width': page_width,
+                        'page_height': page_height,
+                    }
+                    
+                    if blocks:
+                        json_data['blocks'] = blocks
+                    
                     page_obj, created = Page.objects.get_or_create(
                         document=document,
                         page_number=page_num + 1,
-                        defaults={'text': page_text.strip()}
+                        defaults={
+                            'text': page_text.strip(),
+                            'json_data': json_data
+                        }
                     )
                     
                     if not created:
                         page_obj.text = page_text.strip()
+                        page_obj.json_data = json_data
                         page_obj.save()
                     
                     pages_created += 1
-                    logger.info(f"{'Created' if created else 'Updated'} page {page_num + 1} with PyMuPDF (text length: {len(page_text)})")
+                    logger.info(f"{'Created' if created else 'Updated'} page {page_num + 1} with PyMuPDF (text length: {len(page_text)}, blocks: {len(blocks)})")
                 
                 doc.close()
                 logger.info(f"Successfully processed {pages_created} pages with PyMuPDF")
@@ -558,25 +696,88 @@ def process_document_file(document):
             raise ValueError("PDF file has no pages")
         
         pages_created = 0
+        # Initialize ocr_engine_lower for the traditional processing method
+        ocr_engine_lower = document.ocr_engine.lower() if document.ocr_engine else 'mineru'
+        
         for page_num in range(total_pages):
             page = doc.load_page(page_num)
             
-            # Try to extract text directly first (works for PDFs with text layers)
-            page_text = page.get_text()
+            # Get page dimensions
+            try:
+                rect = page.rect
+                page_width = rect.width
+                page_height = rect.height
+            except:
+                page_width = None
+                page_height = None
+            
+            # Try to extract text with bounding boxes directly first (works for PDFs with text layers)
+            # Use get_text("dict") to get structured data with bounding boxes
+            text_dict = page.get_text("dict")
+            page_text = page.get_text()  # Plain text for backward compatibility
             
             # Track if OCR was used
             used_ocr = False
             pix = None
-            page_width = None
-            page_height = None
+            blocks = []
+            
+            # Extract bounding boxes from PyMuPDF text_dict if available
+            if text_dict and 'blocks' in text_dict:
+                try:
+                    for block in text_dict['blocks']:
+                        if 'lines' in block:  # Text block
+                            for line in block['lines']:
+                                line_text_parts = []
+                                line_bbox = None
+                                
+                                for span in line.get('spans', []):
+                                    span_text = span.get('text', '')
+                                    if span_text:
+                                        line_text_parts.append(span_text)
+                                        
+                                        # Get bounding box from span
+                                        bbox_rect = span.get('bbox', [])
+                                        if bbox_rect and len(bbox_rect) == 4:
+                                            # bbox_rect is [x0, y0, x1, y1] from PyMuPDF
+                                            # Convert to [x, y, width, height] format
+                                            x_min = bbox_rect[0]
+                                            y_min = bbox_rect[1]
+                                            x_max = bbox_rect[2]
+                                            y_max = bbox_rect[3]
+                                            
+                                            # Update line bbox to encompass all spans
+                                            if line_bbox is None:
+                                                line_bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
+                                            else:
+                                                # Expand bbox to include this span
+                                                line_bbox[0] = min(line_bbox[0], x_min)
+                                                line_bbox[1] = min(line_bbox[1], y_min)
+                                                line_bbox[2] = max(line_bbox[0] + line_bbox[2], x_max) - line_bbox[0]
+                                                line_bbox[3] = max(line_bbox[1] + line_bbox[3], y_max) - line_bbox[1]
+                                
+                                # Add line as a block if it has text
+                                if line_text_parts:
+                                    line_text = ''.join(line_text_parts).strip()
+                                    if line_text:
+                                        blocks.append({
+                                            'type': 'text_line',
+                                            'text': line_text,
+                                            'bbox': line_bbox,
+                                            'extraction_method': 'direct'
+                                        })
+                except Exception as bbox_error:
+                    logger.warning(f"Error extracting bounding boxes from page {page_num + 1}: {str(bbox_error)}")
+                    blocks = []
             
             # If no text found, try OCR (only if OCR engine is available)
             if not page_text.strip():
                 logger.info(f"Page {page_num + 1} has no text layer, attempting OCR with engine: {document.ocr_engine}...")
                 # Render page to an image
                 pix = page.get_pixmap()
-                page_width = pix.width
-                page_height = pix.height
+                if page_width is None:
+                    page_width = pix.width
+                if page_height is None:
+                    page_height = pix.height
                 img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 used_ocr = True
                 
@@ -589,7 +790,32 @@ def process_document_file(document):
                         used_ocr = False
                     elif ocr_engine_lower == 'tesseract':
                         if pytesseract:
-                            page_text = pytesseract.image_to_string(img)
+                            # Try to get bounding boxes from Tesseract if possible
+                            try:
+                                data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+                                text_parts = []
+                                for i in range(len(data['text'])):
+                                    text_item = data['text'][i].strip()
+                                    if text_item and int(data['conf'][i]) > 0:
+                                        text_parts.append(text_item)
+                                        # Extract bounding box [x, y, width, height]
+                                        x = data['left'][i]
+                                        y = data['top'][i]
+                                        w = data['width'][i]
+                                        h = data['height'][i]
+                                        if w > 0 and h > 0:
+                                            blocks.append({
+                                                'type': 'text_line',
+                                                'text': text_item,
+                                                'bbox': [x, y, w, h],
+                                                'confidence': float(data['conf'][i]) / 100.0,
+                                                'extraction_method': 'ocr'
+                                            })
+                                page_text = " ".join(text_parts)
+                            except Exception as tesseract_bbox_error:
+                                logger.warning(f"Could not extract bounding boxes from Tesseract: {str(tesseract_bbox_error)}")
+                                page_text = pytesseract.image_to_string(img)
+                                blocks = []
                         else:
                             logger.warning("Tesseract selected but pytesseract not installed - skipping OCR")
                             page_text = ""  # Will create page with empty text
@@ -610,9 +836,37 @@ def process_document_file(document):
                         if paddleocr_available and paddleocr_reader:
                             result = paddleocr_reader.ocr(img_array, cls=True)
                             if result and result[0]:
-                                page_text = "\n".join([line[1][0] for line in result[0] if line and len(line) >= 2])
+                                text_parts = []
+                                for line in result[0]:
+                                    if line and len(line) >= 2:
+                                        text_item = line[1][0]
+                                        text_parts.append(text_item)
+                                        
+                                        # Extract bounding box coordinates
+                                        bbox_coords = line[0]
+                                        confidence = line[1][1] if len(line[1]) > 1 else 1.0
+                                        
+                                        if bbox_coords and len(bbox_coords) >= 4:
+                                            x_coords = [point[0] for point in bbox_coords]
+                                            y_coords = [point[1] for point in bbox_coords]
+                                            x_min = min(x_coords)
+                                            y_min = min(y_coords)
+                                            x_max = max(x_coords)
+                                            y_max = max(y_coords)
+                                            bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
+                                            
+                                            blocks.append({
+                                                'type': 'text_line',
+                                                'text': text_item,
+                                                'bbox': bbox,
+                                                'confidence': confidence,
+                                                'bbox_coords': bbox_coords,
+                                                'extraction_method': 'ocr'
+                                            })
+                                page_text = "\n".join(text_parts)
                             else:
                                 page_text = ""
+                                blocks = []
                         else:
                             logger.warning("PaddleOCR selected but not available - skipping OCR")
                             page_text = ""
@@ -680,16 +934,9 @@ def process_document_file(document):
                     logger.warning(f"OCR failed for page {page_num + 1}: {str(ocr_error)}")
                     page_text = ""  # Create page anyway, even without text
                     used_ocr = False
-            else:
-                # Text was found directly from PDF, get page dimensions
-                try:
-                    rect = page.rect
-                    page_width = rect.width
-                    page_height = rect.height
-                except:
-                    pass
+                    blocks = []
             
-            # Create basic JSON data structure for any OCR engine
+            # Create JSON data structure with bounding boxes
             json_data = {
                 'ocr_engine': ocr_engine_lower,
                 'page_number': page_num + 1,
@@ -699,6 +946,10 @@ def process_document_file(document):
                 'page_width': page_width,
                 'page_height': page_height,
             }
+            
+            # Add blocks with bounding boxes if available
+            if blocks:
+                json_data['blocks'] = blocks
             
             # Use get_or_create to avoid duplicate pages
             page_obj, created = Page.objects.get_or_create(

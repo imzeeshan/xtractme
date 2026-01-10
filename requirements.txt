@@ -26,14 +26,17 @@ paddlepaddle>=2.6.1  # Latest version
 paddleocr>=3.1.0  # Latest version
 transformers>=4.57.3  # Latest version for TrOCR and Donut VLM models
 torch>=2.7.1  # Latest version for TrOCR and Donut (PyTorch)
-# olmocr>=0.1.0  # OLMOCR - AI-powered OCR by Allen Institute for AI (OPTIONAL)
-# Note: OLMOCR requires GPU support (12GB+ VRAM recommended). Install with:
+olmocr>=0.4.15  # OLMOCR - AI-powered OCR by Allen Institute for AI (OPTIONAL)
+# Latest version: 0.4.15 (released Jan 9, 2026) - See https://pypi.org/project/olmocr/
+# Requirements: Python >=3.11, Recent NVIDIA GPU (RTX 4090, L40S, A100, H100) with 12GB+ VRAM, 30GB disk space
+# For GPU operations (recommended):
 #   pip install olmocr[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
-#   OR for CPU-only: pip install olmocr (may be slower)
-#   Also requires system dependencies: poppler-utils, fonts packages (see docs)
-# ocrolm>=0.1.0  # OCRoLM - OCR with Large Language Models (OPTIONAL - verify package name/availability)
-# Note: OCRoLM installation instructions may vary. Check package documentation for specific requirements.
-# If this package is not found, verify the correct package name (may be "olmocr" or a different package)
+#   pip install https://download.pytorch.org/whl/cu128/flashinfer/flashinfer_python-0.2.5%2Bcu128torch2.7-cp38-abi3-linux_x86_64.whl  # For faster inference (optional)
+# For CPU-only/benchmark operations:
+#   pip install olmocr[bench]
+# System dependencies (Ubuntu/Debian):
+#   sudo apt-get install poppler-utils ttf-mscorefonts-installer msttcorefonts fonts-crosextra-caladea fonts-crosextra-carlito gsfonts lcdf-typetools
+# Note: Requires a clean Python environment (recommend conda environment: conda create -n olmocr python=3.11)
 
 # Image Processing
 opencv-python-headless>=4.10.0  # Latest version
