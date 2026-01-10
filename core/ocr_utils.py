@@ -1034,6 +1034,7 @@ def extract_pages_with_olmocr_json(file_path):
         import subprocess
         import tempfile
         import json
+        import re
         from pathlib import Path
         import fitz
         
@@ -1041,89 +1042,25 @@ def extract_pages_with_olmocr_json(file_path):
         file_name = Path(file_path).stem
         file_ext = Path(file_path).suffix.lower()
         
-        # For PDFs, we need to process each page
+        # For PDFs, process the entire PDF at once (OLMOCR handles this better)
         if file_ext == '.pdf':
             doc = fitz.open(file_path)
             total_pages = len(doc)
             pages_data = []
             
-            # Process each page individually
+            # Get page dimensions first
+            page_dimensions = []
             for page_num in range(total_pages):
                 page = doc.load_page(page_num)
                 pix = page.get_pixmap()
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                
-                # Save page as temporary image
-                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_img:
-                    img.save(tmp_img.name, format='PNG')
-                    tmp_img_path = tmp_img.name
-                
-                try:
-                    # Process single page with OLMOCR
-                    with tempfile.TemporaryDirectory() as workspace_dir:
-                        output_dir = os.path.join(workspace_dir, 'markdown')
-                        os.makedirs(output_dir, exist_ok=True)
-                        
-                        cmd = [
-                            sys.executable, '-m', 'olmocr.pipeline',
-                            workspace_dir,
-                            '--markdown',
-                            '--pdfs', tmp_img_path
-                        ]
-                        
-                        result = subprocess.run(
-                            cmd,
-                            capture_output=True,
-                            text=True,
-                            timeout=120  # 2 minute timeout per page
-                        )
-                        
-                        # Try to read markdown output
-                        markdown_content = None
-                        md_path = os.path.join(output_dir, f"{Path(tmp_img_path).stem}.md")
-                        if os.path.exists(md_path):
-                            with open(md_path, 'r', encoding='utf-8') as f:
-                                markdown_content = f.read()
-                        
-                        # Create JSON structure for this page
-                        page_json = {
-                            'ocr_engine': 'olmocr',
-                            'page_number': page_num + 1,
-                            'page_width': pix.width,
-                            'page_height': pix.height,
-                            'text': markdown_content.strip() if markdown_content else '',
-                            'format': 'markdown',
-                            'blocks': [
-                                {
-                                    'type': 'text',
-                                    'text': markdown_content.strip() if markdown_content else '',
-                                    'format': 'markdown'
-                                }
-                            ] if markdown_content else []
-                        }
-                        
-                        pages_data.append({
-                            'page_number': page_num + 1,
-                            'text': markdown_content.strip() if markdown_content else '',
-                            'json_data': page_json
-                        })
-                
-                finally:
-                    # Clean up temporary image
-                    try:
-                        os.unlink(tmp_img_path)
-                    except:
-                        pass
-            
+                page_dimensions.append({
+                    'width': pix.width,
+                    'height': pix.height
+                })
             doc.close()
-            return pages_data
-        
-        else:
-            # For single images, process directly
+            
+            # Process entire PDF with OLMOCR
             with tempfile.TemporaryDirectory() as workspace_dir:
-                output_dir = os.path.join(workspace_dir, 'markdown')
-                os.makedirs(output_dir, exist_ok=True)
-                
                 cmd = [
                     sys.executable, '-m', 'olmocr.pipeline',
                     workspace_dir,
@@ -1131,19 +1068,207 @@ def extract_pages_with_olmocr_json(file_path):
                     '--pdfs', file_path
                 ]
                 
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=120
-                )
+                logger.info(f"Running OLMOCR on entire PDF: {' '.join(cmd)}")
                 
-                # Read markdown output
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=600  # 10 minute timeout for entire PDF
+                    )
+                    
+                    # Log any errors
+                    if result.returncode != 0:
+                        logger.error(f"OLMOCR command failed (return code {result.returncode}): {result.stderr}")
+                    if result.stderr:
+                        logger.warning(f"OLMOCR stderr: {result.stderr[:500]}")  # Log first 500 chars
+                    
+                except subprocess.TimeoutExpired:
+                    logger.error("OLMOCR processing timed out")
+                    return []
+                
+                # OLMOCR outputs to workspace_dir/markdown/filename.md
+                # Check multiple possible output locations
+                output_paths = [
+                    os.path.join(workspace_dir, 'markdown', f"{file_name}.md"),
+                    os.path.join(workspace_dir, 'markdown', f"{Path(file_path).name}.md"),
+                    os.path.join(workspace_dir, f"{file_name}.md"),
+                    os.path.join(workspace_dir, 'markdown', f"{file_name}"),
+                ]
+                
+                # Also search for any .md files in the markdown directory
+                markdown_dir = os.path.join(workspace_dir, 'markdown')
+                if os.path.exists(markdown_dir):
+                    for md_file in os.listdir(markdown_dir):
+                        if md_file.endswith('.md'):
+                            output_paths.append(os.path.join(markdown_dir, md_file))
+                
                 markdown_content = None
-                md_path = os.path.join(output_dir, f"{file_name}.md")
-                if os.path.exists(md_path):
-                    with open(md_path, 'r', encoding='utf-8') as f:
-                        markdown_content = f.read()
+                found_path = None
+                
+                for path in output_paths:
+                    if os.path.exists(path):
+                        try:
+                            with open(path, 'r', encoding='utf-8') as f:
+                                markdown_content = f.read()
+                            found_path = path
+                            logger.info(f"Found OLMOCR output at: {path}")
+                            break
+                        except Exception as e:
+                            logger.warning(f"Error reading {path}: {str(e)}")
+                            continue
+                
+                # If still no content, try reading from stdout
+                if not markdown_content and result.stdout:
+                    markdown_content = result.stdout
+                    logger.info("Using OLMOCR output from stdout")
+                
+                # Log debug information about what we found
+                if not markdown_content:
+                    logger.warning(f"OLMOCR produced no output. Checked paths: {output_paths}")
+                    logger.warning(f"OLMOCR return code: {result.returncode}")
+                    logger.warning(f"OLMOCR stdout (first 500 chars): {result.stdout[:500] if result.stdout else 'None'}")
+                    logger.warning(f"OLMOCR stderr (first 500 chars): {result.stderr[:500] if result.stderr else 'None'}")
+                    
+                    # List all files in workspace for debugging
+                    try:
+                        all_files = []
+                        for root, dirs, files in os.walk(workspace_dir):
+                            for f in files:
+                                all_files.append(os.path.relpath(os.path.join(root, f), workspace_dir))
+                        logger.info(f"Files in workspace directory: {all_files}")
+                    except Exception as e:
+                        logger.warning(f"Could not list workspace files: {str(e)}")
+                
+                # Split markdown into pages if we have page separators or use whole content
+                if markdown_content:
+                    # Try to split by page markers (OLMOCR may add page breaks)
+                    # If no clear page breaks, distribute content equally or use whole content
+                    markdown_pages = [markdown_content]  # Default: single page
+                    
+                    # Try to split by page breaks (common patterns)
+                    page_break_patterns = [
+                        r'\n\n---\s*Page\s+\d+\s*---\n\n',
+                        r'\n\n#+\s*Page\s+\d+\n\n',
+                        r'\n\n\*\*\*Page\s+\d+\*\*\*\n\n',
+                    ]
+                    
+                    for pattern in page_break_patterns:
+                        if re.search(pattern, markdown_content, re.IGNORECASE):
+                            markdown_pages = re.split(pattern, markdown_content, flags=re.IGNORECASE)
+                            markdown_pages = [p.strip() for p in markdown_pages if p.strip()]
+                            logger.info(f"Split markdown into {len(markdown_pages)} pages using pattern: {pattern}")
+                            break
+                    
+                    # If we couldn't split, use whole content for first page only
+                    if len(markdown_pages) == 1 and total_pages > 1:
+                        # Distribute content equally or just put all in first page
+                        logger.warning(f"Could not split OLMOCR output into {total_pages} pages, using whole content for page 1")
+                    
+                    # Create page data for each page
+                    for page_num in range(total_pages):
+                        page_content = markdown_pages[page_num] if page_num < len(markdown_pages) else ''
+                        dims = page_dimensions[page_num] if page_num < len(page_dimensions) else {'width': None, 'height': None}
+                        
+                        page_json = {
+                            'ocr_engine': 'olmocr',
+                            'page_number': page_num + 1,
+                            'page_width': dims.get('width'),
+                            'page_height': dims.get('height'),
+                            'text': page_content.strip() if page_content else '',
+                            'format': 'markdown',
+                            'blocks': [
+                                {
+                                    'type': 'text',
+                                    'text': page_content.strip() if page_content else '',
+                                    'format': 'markdown'
+                                }
+                            ] if page_content.strip() else []
+                        }
+                        
+                        pages_data.append({
+                            'page_number': page_num + 1,
+                            'text': page_content.strip() if page_content else '',
+                            'json_data': page_json
+                        })
+                else:
+                    # No content found, create empty pages
+                    logger.warning("No OLMOCR output found, creating empty pages")
+                    for page_num in range(total_pages):
+                        dims = page_dimensions[page_num] if page_num < len(page_dimensions) else {'width': None, 'height': None}
+                        page_json = {
+                            'ocr_engine': 'olmocr',
+                            'page_number': page_num + 1,
+                            'page_width': dims.get('width'),
+                            'page_height': dims.get('height'),
+                            'text': '',
+                            'format': 'markdown',
+                            'blocks': [],
+                            'error': 'No output from OLMOCR - check logs for details'
+                        }
+                        pages_data.append({
+                            'page_number': page_num + 1,
+                            'text': '',
+                            'json_data': page_json
+                        })
+            
+            return pages_data
+        
+        else:
+            # For single images, process directly
+            with tempfile.TemporaryDirectory() as workspace_dir:
+                cmd = [
+                    sys.executable, '-m', 'olmocr.pipeline',
+                    workspace_dir,
+                    '--markdown',
+                    '--pdfs', file_path
+                ]
+                
+                logger.info(f"Running OLMOCR on image: {' '.join(cmd)}")
+                
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=120
+                    )
+                    
+                    if result.returncode != 0:
+                        logger.error(f"OLMOCR command failed (return code {result.returncode}): {result.stderr}")
+                    
+                except subprocess.TimeoutExpired:
+                    logger.error("OLMOCR processing timed out")
+                    return []
+                
+                # Check multiple possible output locations
+                output_paths = [
+                    os.path.join(workspace_dir, 'markdown', f"{file_name}.md"),
+                    os.path.join(workspace_dir, 'markdown', f"{Path(file_path).name}.md"),
+                    os.path.join(workspace_dir, f"{file_name}.md"),
+                ]
+                
+                markdown_dir = os.path.join(workspace_dir, 'markdown')
+                if os.path.exists(markdown_dir):
+                    for md_file in os.listdir(markdown_dir):
+                        if md_file.endswith('.md'):
+                            output_paths.append(os.path.join(markdown_dir, md_file))
+                
+                markdown_content = None
+                for path in output_paths:
+                    if os.path.exists(path):
+                        try:
+                            with open(path, 'r', encoding='utf-8') as f:
+                                markdown_content = f.read()
+                            logger.info(f"Found OLMOCR output at: {path}")
+                            break
+                        except Exception as e:
+                            logger.warning(f"Error reading {path}: {str(e)}")
+                            continue
+                
+                if not markdown_content and result.stdout:
+                    markdown_content = result.stdout
                 
                 page_json = {
                     'ocr_engine': 'olmocr',
@@ -1156,7 +1281,7 @@ def extract_pages_with_olmocr_json(file_path):
                             'text': markdown_content.strip() if markdown_content else '',
                             'format': 'markdown'
                         }
-                    ] if markdown_content else []
+                    ] if markdown_content and markdown_content.strip() else []
                 }
                 
                 return [{
