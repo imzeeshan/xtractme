@@ -31,9 +31,9 @@ torch>=2.7.1  # Latest version for TrOCR and Donut (PyTorch)
 #   pip install olmocr[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
 #   OR for CPU-only: pip install olmocr (may be slower)
 #   Also requires system dependencies: poppler-utils, fonts packages (see docs)
-ocrolm>=0.1.0  # OCRoLM - OCR with Large Language Models (OPTIONAL)
+# ocrolm>=0.1.0  # OCRoLM - OCR with Large Language Models (OPTIONAL - verify package name/availability)
 # Note: OCRoLM installation instructions may vary. Check package documentation for specific requirements.
-# If this package is not found, you may need to install from a specific source or use a different package name
+# If this package is not found, verify the correct package name (may be "olmocr" or a different package)
 
 # Image Processing
 opencv-python-headless>=4.10.0  # Latest version
