@@ -6,6 +6,7 @@ from io import BytesIO
 from django.conf import settings
 import logging
 import os
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -137,13 +138,22 @@ paddleocr_available = False
 paddleocr_reader = None
 try:
     from paddleocr import PaddleOCR
-    paddleocr_reader = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False)
+    # use_gpu parameter is deprecated in newer versions - PaddleOCR auto-detects GPU
+    # Initialize with basic parameters that are supported across versions
+    paddleocr_reader = PaddleOCR(use_angle_cls=True, lang='en')
     paddleocr_available = True
 except ImportError:
     paddleocr_available = False
 except Exception as e:
     logger.warning(f"PaddleOCR initialization failed: {str(e)}")
-    paddleocr_available = False
+    # Try with minimal parameters if the above fails
+    try:
+        paddleocr_reader = PaddleOCR(lang='en')
+        paddleocr_available = True
+        logger.info("PaddleOCR initialized with minimal parameters")
+    except Exception as e2:
+        logger.warning(f"PaddleOCR initialization with minimal parameters also failed: {str(e2)}")
+        paddleocr_available = False
 
 # Try to initialize TrOCR (Transformer OCR) (will fail gracefully if not available)
 trocr_available = False
@@ -174,6 +184,36 @@ except ImportError:
 except Exception as e:
     logger.warning(f"Donut initialization failed: {str(e)}")
     donut_available = False
+
+# Try to initialize OLMOCR (will fail gracefully if not available)
+olmocr_available = False
+try:
+    # First try importing the module directly
+    try:
+        import olmocr
+        olmocr_available = True
+        logger.debug("OLMOCR module found via import")
+    except ImportError:
+        # If import fails, try checking if command-line interface is available
+        try:
+            import subprocess
+            import sys
+            # Try to run olmocr.pipeline module to check if it's installed
+            result = subprocess.run(
+                [sys.executable, '-m', 'olmocr.pipeline', '--help'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            # If command exists (even if help shows error), module is available
+            if 'olmocr' in result.stdout.lower() or 'olmocr' in result.stderr.lower() or result.returncode == 0:
+                olmocr_available = True
+                logger.debug("OLMOCR found via command-line check")
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+            olmocr_available = False
+except Exception as e:
+    logger.debug(f"OLMOCR not available: {str(e)}")
+    olmocr_available = False
 
 
 def extract_text_with_tesseract(image_path):
@@ -683,6 +723,92 @@ def extract_text_with_paddleocr(file_path, file_type='pdf'):
         return f"Error with PaddleOCR: {str(e)}"
 
 
+def extract_pages_with_paddleocr_layout(file_path):
+    """Extract page-by-page data with layout information from PDF using PaddleOCR
+    
+    Returns:
+        list: List of dictionaries, each containing:
+            - page_number: int
+            - text: str
+            - json_data: dict (with bounding boxes and layout information)
+        Returns empty list if PaddleOCR is not available
+    """
+    if not paddleocr_available or paddleocr_reader is None:
+        logger.warning("PaddleOCR is not installed. Returning empty page data.")
+        return []
+    
+    try:
+        import fitz
+        import numpy as np
+        pages_data = []
+        
+        doc = fitz.open(file_path)
+        
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            pix = page.get_pixmap()
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            img_array = np.array(img)
+            
+            # Run OCR with layout information
+            result = paddleocr_reader.ocr(img_array, cls=True)
+            
+            # Build structured data with bounding boxes
+            blocks = []
+            text_parts = []
+            
+            if result and result[0]:
+                for line in result[0]:
+                    if line and len(line) >= 2:
+                        # line[0] contains bounding box coordinates: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+                        # line[1] contains (text, confidence)
+                        bbox_coords = line[0]
+                        text = line[1][0]
+                        confidence = line[1][1] if len(line[1]) > 1 else 1.0
+                        
+                        # Convert bbox to [x, y, width, height] format
+                        if bbox_coords and len(bbox_coords) >= 4:
+                            x_coords = [point[0] for point in bbox_coords]
+                            y_coords = [point[1] for point in bbox_coords]
+                            x_min = min(x_coords)
+                            y_min = min(y_coords)
+                            x_max = max(x_coords)
+                            y_max = max(y_coords)
+                            
+                            bbox = [x_min, y_min, x_max - x_min, y_max - y_min]
+                        else:
+                            bbox = None
+                        
+                        blocks.append({
+                            'type': 'text_line',
+                            'text': text,
+                            'bbox': bbox,
+                            'confidence': confidence,
+                            'bbox_coords': bbox_coords
+                        })
+                        text_parts.append(text)
+            
+            # Create page data structure similar to MinerU format
+            page_info = {
+                'page_number': page_num + 1,
+                'text': '\n'.join(text_parts),
+                'json_data': {
+                    'blocks': blocks,
+                    'ocr_engine': 'paddleocr',
+                    'page_width': pix.width,
+                    'page_height': pix.height
+                }
+            }
+            
+            pages_data.append(page_info)
+        
+        doc.close()
+        return pages_data
+    except Exception as e:
+        logger.error(f"Error extracting pages with PaddleOCR layout: {str(e)}", exc_info=True)
+        return []
+
+
 def extract_text_with_trocr(file_path, file_type='pdf'):
     """Extract text from a PDF or image using TrOCR (Transformer OCR)"""
     if not trocr_available or trocr_processor is None or trocr_model is None:
@@ -852,6 +978,264 @@ def extract_text_with_donut(file_path, file_type='pdf'):
         return f"Error with Donut: {str(e)}"
 
 
+def extract_text_with_olmocr(image_path, file_type='pdf'):
+    """Extract text from an image or PDF using OLMOCR (local installation or API)"""
+    try:
+        # Try to get settings from Django settings first, then from Settings model
+        use_api = getattr(settings, 'OLMOCR_USE_API', False)  # Default to local mode
+        api_url = getattr(settings, 'OLMOCR_API_URL', 'https://api.olmocr.com')
+        enabled = getattr(settings, 'OLMOCR_ENABLED', True)
+        
+        # Try to get from Settings model if Django settings not set
+        try:
+            from .models import Settings
+            settings_obj = Settings.get_settings()
+            if settings_obj:
+                if hasattr(settings_obj, 'olmocr_enabled'):
+                    enabled = settings_obj.olmocr_enabled
+                if hasattr(settings_obj, 'olmocr_use_api'):
+                    use_api = settings_obj.olmocr_use_api
+                if hasattr(settings_obj, 'olmocr_api_url') and settings_obj.olmocr_api_url:
+                    api_url = settings_obj.olmocr_api_url
+        except Exception:
+            # Settings model not available or error accessing it - use Django settings
+            pass
+        
+        if not enabled:
+            return "Error: OLMOCR is disabled in settings"
+        
+        logger.info(f"OLMOCR: use_api={use_api}, api_url={api_url if use_api else 'local'}")
+        
+        if use_api:
+            # Use API mode
+            return extract_text_with_olmocr_api(image_path, api_url)
+        else:
+            # Use local installation
+            return extract_text_with_olmocr_local(image_path, file_type)
+    except Exception as e:
+        return f"Error with OLMOCR: {str(e)}"
+
+
+def extract_text_with_olmocr_local(file_path, file_type='pdf'):
+    """Extract text from a PDF or image using local OLMOCR installation"""
+    if not olmocr_available:
+        return "Error: OLMOCR is not installed locally. Install it with: pip install olmocr[gpu] or pip install olmocr (see docs for installation instructions)"
+    
+    try:
+        import subprocess
+        import tempfile
+        import json
+        from pathlib import Path
+        
+        # Get the base filename
+        file_name = Path(file_path).stem
+        file_ext = Path(file_path).suffix.lower()
+        
+        # Check if file is PDF or image
+        if file_type == 'pdf' or file_ext == '.pdf':
+            input_file = file_path
+        elif file_ext in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif']:
+            input_file = file_path
+        else:
+            return f"Error: OLMOCR does not support file type: {file_ext}"
+        
+        # Create temporary workspace directory
+        with tempfile.TemporaryDirectory() as workspace_dir:
+            # Determine output directory for markdown
+            output_dir = os.path.join(workspace_dir, 'markdown')
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Run OLMOCR pipeline command using sys.executable for Python path
+            # python -m olmocr.pipeline ./localworkspace --markdown --pdfs path_to_file
+            cmd = [
+                sys.executable, '-m', 'olmocr.pipeline',
+                workspace_dir,
+                '--markdown',
+                '--pdfs', input_file
+            ]
+            
+            logger.info(f"Running OLMOCR locally: {' '.join(cmd)}")
+            
+            # Execute the command
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,  # 5 minute timeout
+                    cwd=None  # Run from current directory
+                )
+            except subprocess.TimeoutExpired:
+                return "Error: OLMOCR processing timed out (exceeded 5 minutes). Try processing smaller files or increase timeout."
+            
+            if result.returncode != 0:
+                error_msg = result.stderr or result.stdout or "Unknown error"
+                logger.error(f"OLMOCR command failed (return code {result.returncode}): {error_msg}")
+                # Check for common errors
+                if 'not found' in error_msg.lower() or 'No module named' in error_msg:
+                    return "Error: OLMOCR module not found. Install it with: pip install olmocr[gpu]"
+                return f"Error running OLMOCR: {error_msg}"
+            
+            # Look for the generated markdown file
+            # OLMOCR outputs to workspace_dir/markdown/filename.md
+            markdown_file = os.path.join(output_dir, f"{file_name}.md")
+            
+            # Also check alternative paths
+            alt_paths = [
+                os.path.join(workspace_dir, 'markdown', f"{Path(file_path).name}.md"),
+                os.path.join(workspace_dir, f"{file_name}.md"),
+                os.path.join(workspace_dir, 'markdown', f"{Path(file_path).name}"),
+            ]
+            
+            markdown_content = None
+            for path in [markdown_file] + alt_paths:
+                if os.path.exists(path):
+                    try:
+                        with open(path, 'r', encoding='utf-8') as f:
+                            markdown_content = f.read()
+                        logger.info(f"Found OLMOCR output at: {path}")
+                        break
+                    except Exception as e:
+                        logger.warning(f"Error reading OLMOCR output from {path}: {str(e)}")
+                        continue
+            
+            if markdown_content:
+                return markdown_content.strip()
+            
+            # If markdown not found, try to read from stdout
+            if result.stdout and result.stdout.strip():
+                return result.stdout.strip()
+            
+            logger.warning(f"OLMOCR processed file but no output found. Checked paths: {[markdown_file] + alt_paths}")
+            return "Error: OLMOCR processed the file but no output was found. Check logs for details."
+            
+    except FileNotFoundError:
+        return "Error: Python executable not found. OLMOCR requires Python to be in PATH."
+    except Exception as e:
+        logger.error(f"Error with OLMOCR local processing: {str(e)}", exc_info=True)
+        return f"Error with OLMOCR: {str(e)}"
+
+
+def extract_text_with_olmocr_api(image_path, api_url='https://api.olmocr.com'):
+    """Extract text from an image using OLMOCR API server"""
+    try:
+        # Read image file
+        with open(image_path, 'rb') as f:
+            image_data = f.read()
+        
+        # Check file size (OLMOCR has 5MB limit)
+        if len(image_data) > 5 * 1024 * 1024:
+            return "Error: Image file is too large. OLMOCR supports files up to 5MB."
+        
+        # Encode image to base64
+        image_base64 = base64.b64encode(image_data).decode('utf-8')
+        
+        # Prepare API request
+        # Try common API endpoints
+        endpoints = [
+            f'{api_url}/api/ocr',
+            f'{api_url}/ocr',
+            f'{api_url}/api/v1/ocr',
+            f'{api_url}/recognize',
+            f'{api_url}/extract',
+        ]
+        
+        # Try JSON payload with base64 image
+        for endpoint in endpoints:
+            try:
+                response = requests.post(
+                    endpoint,
+                    json={'image': image_base64, 'format': 'base64'},
+                    headers={'Content-Type': 'application/json'},
+                    timeout=60
+                )
+                if response.status_code == 200:
+                    result = response.json()
+                    # Handle different response formats
+                    if isinstance(result, dict):
+                        return result.get('text', result.get('result', result.get('extracted_text', str(result))))
+                    return str(result)
+            except requests.exceptions.RequestException:
+                continue
+        
+        # Try multipart form data
+        for endpoint in endpoints:
+            try:
+                with open(image_path, 'rb') as f:
+                    # Determine file extension
+                    ext = os.path.splitext(image_path)[1].lower()
+                    content_type = 'image/png' if ext == '.png' else 'image/jpeg' if ext in ['.jpg', '.jpeg'] else 'application/pdf'
+                    
+                    files = {'file': (os.path.basename(image_path), f, content_type)}
+                    response = requests.post(
+                        endpoint,
+                        files=files,
+                        timeout=60
+                    )
+                if response.status_code == 200:
+                    result = response.json()
+                    if isinstance(result, dict):
+                        return result.get('text', result.get('result', result.get('extracted_text', str(result))))
+                    return str(result)
+            except requests.exceptions.RequestException:
+                continue
+        
+        return f"Error: Could not connect to OLMOCR API at {api_url}. Please ensure the service is running and the API URL is correct."
+    except Exception as e:
+        return f"Error with OLMOCR API: {str(e)}"
+
+
+def extract_text_with_olmocr_from_image(img, api_url=None):
+    """Extract text from PIL Image using OLMOCR (local or API)"""
+    try:
+        # Try to get settings from Django settings first, then from Settings model
+        use_api = getattr(settings, 'OLMOCR_USE_API', False)  # Default to local mode
+        if api_url is None:
+            api_url = getattr(settings, 'OLMOCR_API_URL', 'https://api.olmocr.com')
+        enabled = getattr(settings, 'OLMOCR_ENABLED', True)
+        
+        # Try to get from Settings model if Django settings not set
+        try:
+            from .models import Settings
+            settings_obj = Settings.get_settings()
+            if settings_obj:
+                if hasattr(settings_obj, 'olmocr_enabled'):
+                    enabled = settings_obj.olmocr_enabled
+                if hasattr(settings_obj, 'olmocr_use_api'):
+                    use_api = settings_obj.olmocr_use_api
+                if hasattr(settings_obj, 'olmocr_api_url') and settings_obj.olmocr_api_url:
+                    api_url = settings_obj.olmocr_api_url
+        except Exception:
+            # Settings model not available or error accessing it - use Django settings
+            pass
+        
+        if not enabled:
+            return "Error: OLMOCR is disabled in settings"
+        
+        # Save PIL Image to temporary file
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+            img.save(tmp_file.name, format='PNG')
+            tmp_path = tmp_file.name
+        
+        try:
+            if use_api:
+                logger.info(f"OLMOCR from image (API): api_url={api_url}")
+                result = extract_text_with_olmocr_api(tmp_path, api_url)
+            else:
+                logger.info("OLMOCR from image (local)")
+                result = extract_text_with_olmocr_local(tmp_path, file_type='image')
+            return result
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+    except Exception as e:
+        return f"Error with OLMOCR: {str(e)}"
+
+
 def extract_text_from_pdf(pdf_path, ocr_engine='mineru'):
     """Extract text from a PDF file with optional OCR"""
     try:
@@ -864,7 +1248,18 @@ def extract_text_from_pdf(pdf_path, ocr_engine='mineru'):
             result = extract_text_with_mineru(pdf_path, file_type='pdf')
             return result
         
-        # Otherwise, use traditional method
+        # If PyMuPDF is explicitly selected, use it for direct text extraction
+        if ocr_engine.lower() == 'pymupdf':
+            doc = fitz.open(pdf_path)
+            text = ""
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                page_text = page.get_text()
+                text += f"\n--- Page {page_num + 1} ---\n{page_text}\n"
+            doc.close()
+            return text.strip()
+        
+        # Otherwise, use traditional method with PyMuPDF and optional OCR
         # Open the PDF
         doc = fitz.open(pdf_path)
         text = ""

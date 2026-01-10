@@ -10,6 +10,8 @@ PyMuPDF>=1.26.7  # Latest stable version
 
 # OCR Libraries
 mineru>=2.6.4  # Latest version - MinerU for document understanding
+doclayout-yolo>=0.0.4  # Required for MinerU layout detection
+ultralytics>=8.3.0  # Required for YOLO models used by MinerU
 pytesseract>=0.3.13  # Latest version
 deepseek-ocr>=0.3.0  # Optional: Only needed if not using API mode
 requests>=2.32.4  # Latest version for security
@@ -24,13 +26,18 @@ paddlepaddle>=2.6.1  # Latest version
 paddleocr>=3.1.0  # Latest version
 transformers>=4.57.3  # Latest version for TrOCR and Donut VLM models
 torch>=2.7.1  # Latest version for TrOCR and Donut (PyTorch)
+# olmocr>=0.1.0  # OLMOCR - AI-powered OCR by Allen Institute for AI (OPTIONAL)
+# Note: OLMOCR requires GPU support (12GB+ VRAM recommended). Install with:
+#   pip install olmocr[gpu] --extra-index-url https://download.pytorch.org/whl/cu128
+#   OR for CPU-only: pip install olmocr (may be slower)
+#   Also requires system dependencies: poppler-utils, fonts packages (see docs)
 
 # Image Processing
 opencv-python-headless>=4.10.0  # Latest version
 Pillow>=12.1.0  # Latest version
 
 # Scientific Computing
-numpy>=1.26.4,<2.0  # Keep constraint to avoid breaking changes
+numpy>=1.26.4  # Python 3.13+ requires numpy>=2.1.0 (via magika dependency)
 
 # Environment Management
 python-dotenv>=1.2.1  # Latest version
@@ -50,5 +57,6 @@ django-unfold>=0.74.1  # Latest version - Modern Django admin theme
 # - PaddleOCR, TrOCR, and Donut require significant disk space for model downloads
 # - torch (PyTorch) is large - consider CPU-only version if GPU not available
 # - numpy is constrained to <2.0 due to compatibility with opencv and other packages
+# - doclayout-yolo and ultralytics are required dependencies for MinerU
 # - Some packages have strict version requirements: opt-einsum==3.3.0 (paddlepaddle), 
 #   PyYAML==6.0.2 (paddlex), pypdfium2==4.30.0 (pdftext), onnxruntime<=1.20.1 (magika on Windows)

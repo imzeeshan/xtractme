@@ -28,12 +28,14 @@ class DocumentForm(forms.ModelForm):
                 'class': 'form-control'
             }, choices=[
                 ('mineru', 'MinerU (Default)'),
+                ('pymupdf', 'PyMuPDF (PDF Text Extraction)'),
                 ('pdfplumber', 'pdfplumber (PDF Text Extraction)'),
                 ('tesseract', 'Tesseract OCR'),
                 ('deepseek', 'DeepSeek OCR'),
                 ('paddleocr', 'PaddleOCR'),
                 ('trocr', 'TrOCR (Transformer OCR)'),
                 ('donut', 'Donut (Document Understanding)'),
+                ('olmocr', 'OLMOCR (AI-Powered OCR)'),
             ]),
         }
     

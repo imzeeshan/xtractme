@@ -149,6 +149,11 @@ DEEPSEEK_OCR_ENABLED = True
 DEEPSEEK_OCR_API_URL = os.getenv('DEEPSEEK_OCR_API_URL', 'http://localhost:8001')
 DEEPSEEK_OCR_USE_API = os.getenv('DEEPSEEK_OCR_USE_API', 'True').lower() == 'true'
 
+# OLMOCR Configuration
+OLMOCR_ENABLED = os.getenv('OLMOCR_ENABLED', 'True').lower() == 'true'
+OLMOCR_API_URL = os.getenv('OLMOCR_API_URL', 'https://api.olmocr.com')
+OLMOCR_USE_API = os.getenv('OLMOCR_USE_API', 'False').lower() == 'true'  # Default to local installation
+
 # Logging Configuration
 LOGGING = {
     'version': 1,

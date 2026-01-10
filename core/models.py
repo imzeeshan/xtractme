@@ -73,6 +73,129 @@ class Page(models.Model):
     def get_page_pdf_url(self):
         """Generate URL to view this specific page from the PDF"""
         return reverse('page_preview', kwargs={'pk': self.pk})
+    
+    def get_blocks(self):
+        """Extract all blocks (paragraphs, headings, etc.) from MinerU JSON data"""
+        if not self.json_data:
+            return []
+        
+        blocks = []
+        # MinerU structure: pages -> blocks
+        if 'blocks' in self.json_data:
+            blocks = self.json_data['blocks']
+        elif 'pages' in self.json_data and isinstance(self.json_data['pages'], list):
+            # If it's a pages array, get blocks from the current page
+            for page in self.json_data['pages']:
+                if page.get('page_number') == self.page_number and 'blocks' in page:
+                    blocks = page['blocks']
+                    break
+        
+        return blocks
+    
+    def get_tables(self):
+        """Extract all tables from MinerU JSON data"""
+        if not self.json_data:
+            return []
+        
+        tables = []
+        blocks = self.get_blocks()
+        for block in blocks:
+            if block.get('type') == 'table' or 'table' in block.get('type', '').lower():
+                tables.append(block)
+        
+        return tables
+    
+    def get_formulas(self):
+        """Extract all formulas/equations from MinerU JSON data"""
+        if not self.json_data:
+            return []
+        
+        formulas = []
+        blocks = self.get_blocks()
+        for block in blocks:
+            if block.get('type') == 'formula' or 'formula' in block.get('type', '').lower():
+                formulas.append(block)
+        
+        return formulas
+    
+    def get_headings(self):
+        """Extract all headings from MinerU JSON data"""
+        if not self.json_data:
+            return []
+        
+        headings = []
+        blocks = self.get_blocks()
+        for block in blocks:
+            block_type = block.get('type', '').lower()
+            if 'heading' in block_type or 'title' in block_type or block.get('level'):
+                headings.append(block)
+        
+        return headings
+    
+    def get_paragraphs(self):
+        """Extract all paragraphs from MinerU JSON data"""
+        if not self.json_data:
+            return []
+        
+        paragraphs = []
+        blocks = self.get_blocks()
+        for block in blocks:
+            block_type = block.get('type', '').lower()
+            if 'paragraph' in block_type or 'text' in block_type:
+                if block.get('type') != 'table' and 'formula' not in block_type:
+                    paragraphs.append(block)
+        
+        return paragraphs
+    
+    def get_bounding_boxes(self):
+        """Extract all bounding boxes from MinerU JSON data"""
+        if not self.json_data:
+            return []
+        
+        bboxes = []
+        blocks = self.get_blocks()
+        for block in blocks:
+            if 'bbox' in block or 'bounding_box' in block:
+                bbox = block.get('bbox') or block.get('bounding_box')
+                if bbox:
+                    bboxes.append({
+                        'text': block.get('text', ''),
+                        'type': block.get('type', 'unknown'),
+                        'bbox': bbox
+                    })
+        
+        return bboxes
+    
+    def get_layout_structure(self):
+        """Get a structured representation of the page layout"""
+        if not self.json_data:
+            return None
+        
+        return {
+            'page_number': self.page_number,
+            'blocks_count': len(self.get_blocks()),
+            'tables_count': len(self.get_tables()),
+            'formulas_count': len(self.get_formulas()),
+            'headings_count': len(self.get_headings()),
+            'paragraphs_count': len(self.get_paragraphs()),
+            'has_layout': bool(self.get_blocks()),
+            'blocks': self.get_blocks()
+        }
+    
+    def extract_text_by_type(self, block_type='paragraph'):
+        """Extract text from blocks of a specific type"""
+        if not self.json_data:
+            return []
+        
+        texts = []
+        blocks = self.get_blocks()
+        for block in blocks:
+            if block.get('type', '').lower() == block_type.lower():
+                text = block.get('text', '')
+                if text:
+                    texts.append(text)
+        
+        return texts
 
 
 class Prompt(models.Model):
@@ -299,6 +422,7 @@ class Settings(models.Model):
         ('paddleocr', 'PaddleOCR'),
         ('trocr', 'TrOCR'),
         ('donut', 'Donut'),
+        ('olmocr', 'OLMOCR'),
     ]
     
     # Singleton identifier
@@ -335,6 +459,21 @@ class Settings(models.Model):
     deepseek_ocr_use_api = models.BooleanField(
         default=True,
         help_text="Use DeepSeek OCR via API (if False, uses local installation)"
+    )
+    
+    # OLMOCR Settings
+    olmocr_enabled = models.BooleanField(
+        default=True,
+        help_text="Enable OLMOCR integration"
+    )
+    olmocr_api_url = models.URLField(
+        default='https://api.olmocr.com',
+        blank=True,
+        help_text="OLMOCR API URL (only used if 'Use OLMOCR via API' is enabled)"
+    )
+    olmocr_use_api = models.BooleanField(
+        default=False,
+        help_text="Use OLMOCR via API (if False, uses local installation - requires pip install olmocr)"
     )
     
     # General Settings

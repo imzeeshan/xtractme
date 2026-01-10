@@ -229,7 +229,8 @@ def process_document_file(document):
             extract_text_with_trocr,
             extract_text_with_donut,
             extract_text_from_pdf,
-            extract_pages_with_mineru_json
+            extract_pages_with_mineru_json,
+            extract_pages_with_paddleocr_layout
         )
     except ImportError as e:
         logger.warning(f"Some OCR utilities not available: {str(e)}")
@@ -251,6 +252,8 @@ def process_document_file(document):
         def extract_text_from_pdf(*args, **kwargs):
             return ""
         def extract_pages_with_mineru_json(*args, **kwargs):
+            return []
+        def extract_pages_with_paddleocr_layout(*args, **kwargs):
             return []
     
     # Try to import pytesseract, but don't fail if not available
@@ -289,7 +292,7 @@ def process_document_file(document):
         document.save(update_fields=['ocr_engine'])
     
     ocr_engine_lower = document.ocr_engine.lower()
-    valid_engines = ['mineru', 'tesseract', 'deepseek', 'paddleocr', 'trocr', 'donut', 'pdfplumber']
+    valid_engines = ['mineru', 'pymupdf', 'pdfplumber', 'tesseract', 'deepseek', 'paddleocr', 'trocr', 'donut', 'olmocr']
     if ocr_engine_lower not in valid_engines:
         logger.warning(f"Invalid OCR engine '{document.ocr_engine}' for document {document.id}, defaulting to 'mineru'")
         document.ocr_engine = 'mineru'
@@ -342,6 +345,48 @@ def process_document_file(document):
                     logger.error(f"Error with pdfplumber: {str(e)}", exc_info=True)
                     raise
         
+        # If PyMuPDF is selected, use it for direct PDF text extraction
+        if ocr_engine_lower == 'pymupdf':
+            logger.info("Attempting PyMuPDF text extraction...")
+            try:
+                pages_created = 0
+                doc = fitz.open(file_path)
+                total_pages = len(doc)
+                logger.info(f"PDF has {total_pages} pages (PyMuPDF)")
+                
+                if total_pages == 0:
+                    doc.close()
+                    raise ValueError("PDF file has no pages")
+                
+                for page_num in range(total_pages):
+                    page = doc.load_page(page_num)
+                    # Extract text directly using PyMuPDF (no OCR fallback)
+                    page_text = page.get_text()
+                    if page_text is None:
+                        page_text = ""
+                    
+                    page_obj, created = Page.objects.get_or_create(
+                        document=document,
+                        page_number=page_num + 1,
+                        defaults={'text': page_text.strip()}
+                    )
+                    
+                    if not created:
+                        page_obj.text = page_text.strip()
+                        page_obj.save()
+                    
+                    pages_created += 1
+                    logger.info(f"{'Created' if created else 'Updated'} page {page_num + 1} with PyMuPDF (text length: {len(page_text)})")
+                
+                doc.close()
+                logger.info(f"Successfully processed {pages_created} pages with PyMuPDF")
+                if pages_created == 0:
+                    raise ValueError("Failed to extract any pages with PyMuPDF")
+                return
+            except Exception as e:
+                logger.error(f"Error with PyMuPDF: {str(e)}", exc_info=True)
+                raise
+        
         # If MinerU is selected, use it for full PDF processing with JSON extraction
         if ocr_engine_lower == 'mineru':
             logger.info("Attempting MinerU JSON extraction...")
@@ -374,6 +419,72 @@ def process_document_file(document):
                 logger.info("MinerU not available or returned no data. Falling back to traditional PDF processing.")
                 # Fall through to traditional processing
         
+        # If OLMOCR is selected, use it for full PDF processing
+        if ocr_engine_lower == 'olmocr':
+            logger.info("Attempting OLMOCR extraction...")
+            from .ocr_utils import extract_text_with_olmocr, olmocr_available
+            
+            if olmocr_available:
+                try:
+                    # OLMOCR processes the entire PDF and returns markdown
+                    full_text = extract_text_with_olmocr(file_path, file_type='pdf')
+                    
+                    if full_text and not full_text.startswith("Error"):
+                        # For now, create a single page with all text
+                        # TODO: Parse markdown to extract page-by-page content if needed
+                        page_obj, created = Page.objects.get_or_create(
+                            document=document,
+                            page_number=1,
+                            defaults={'text': full_text.strip()}
+                        )
+                        if not created:
+                            page_obj.text = full_text.strip()
+                            page_obj.save()
+                        
+                        logger.info(f"Successfully processed PDF with OLMOCR (text length: {len(full_text)})")
+                        return
+                    else:
+                        logger.warning(f"OLMOCR returned error: {full_text}")
+                        # Fall through to traditional processing
+                except Exception as e:
+                    logger.error(f"Error with OLMOCR: {str(e)}", exc_info=True)
+                    # Fall through to traditional processing
+            else:
+                logger.warning("OLMOCR not available - falling back to traditional PDF processing")
+                # Fall through to traditional processing
+        
+        # If PaddleOCR is selected, use enhanced layout extraction
+        if ocr_engine_lower == 'paddleocr':
+            logger.info("Attempting PaddleOCR layout extraction...")
+            # Use PaddleOCR to extract page-by-page data with layout
+            pages_data = extract_pages_with_paddleocr_layout(file_path)
+            
+            if pages_data:
+                # PaddleOCR successfully extracted data with layout
+                logger.info(f"PaddleOCR extracted {len(pages_data)} pages with layout")
+                
+                # Create Page objects with JSON data
+                for page_info in pages_data:
+                    page_obj, created = Page.objects.get_or_create(
+                        document=document,
+                        page_number=page_info['page_number'],
+                        defaults={
+                            'text': page_info.get('text', ''),
+                            'json_data': page_info.get('json_data', {})
+                        }
+                    )
+                    if not created:
+                        page_obj.text = page_info.get('text', '')
+                        page_obj.json_data = page_info.get('json_data', {})
+                        page_obj.save()
+                
+                logger.info(f"Successfully created/updated {len(pages_data)} page objects with PaddleOCR layout")
+                return
+            else:
+                # PaddleOCR layout extraction not available - fall through to traditional method
+                logger.info("PaddleOCR layout extraction not available. Falling back to traditional PDF processing.")
+                # Fall through to traditional processing
+        
         # Traditional PDF processing method
         logger.info("Using traditional PDF processing method...")
         doc = fitz.open(file_path)
@@ -400,7 +511,11 @@ def process_document_file(document):
                 
                 try:
                     ocr_engine_lower = document.ocr_engine.lower() if document.ocr_engine else 'mineru'
-                    if ocr_engine_lower == 'tesseract':
+                    if ocr_engine_lower == 'pymupdf':
+                        # PyMuPDF doesn't do OCR - just leave text empty if no text layer found
+                        logger.info("PyMuPDF selected - no OCR fallback, leaving text empty for page without text layer")
+                        page_text = ""
+                    elif ocr_engine_lower == 'tesseract':
                         if pytesseract:
                             page_text = pytesseract.image_to_string(img)
                         else:
@@ -473,6 +588,12 @@ def process_document_file(document):
                         else:
                             logger.warning("Donut selected but not available - skipping OCR")
                             page_text = ""
+                    elif ocr_engine_lower == 'olmocr':
+                        from .ocr_utils import extract_text_with_olmocr_from_image
+                        page_text = extract_text_with_olmocr_from_image(img)
+                        if page_text and page_text.startswith("Error"):
+                            logger.warning(f"OLMOCR failed: {page_text}")
+                            page_text = ""
                     else:
                         # Unknown OCR engine - log warning and use empty text
                         logger.warning(f"Unknown OCR engine '{document.ocr_engine}' (normalized: '{ocr_engine_lower}') for PDF page {page_num + 1} - creating page with empty text")
@@ -510,7 +631,11 @@ def process_document_file(document):
         
         logger.info(f"Processing image with OCR engine: {ocr_engine_lower}")
         
-        if ocr_engine_lower == 'mineru':
+        if ocr_engine_lower == 'pymupdf':
+            # PyMuPDF is for PDFs only, not images - use Tesseract as fallback
+            logger.warning("PyMuPDF is for PDFs only, falling back to Tesseract for image processing")
+            page_text = extract_text_with_tesseract(file_path) if pytesseract else ""
+        elif ocr_engine_lower == 'mineru':
             page_text = extract_text_with_mineru(file_path, file_type='image')
         elif ocr_engine_lower == 'tesseract':
             page_text = extract_text_with_tesseract(file_path)
@@ -522,6 +647,12 @@ def process_document_file(document):
             page_text = extract_text_with_trocr(file_path, file_type='image')
         elif ocr_engine_lower == 'donut':
             page_text = extract_text_with_donut(file_path, file_type='image')
+        elif ocr_engine_lower == 'olmocr':
+            from .ocr_utils import extract_text_with_olmocr
+            page_text = extract_text_with_olmocr(file_path, file_type='image')
+            if page_text and page_text.startswith("Error"):
+                logger.warning(f"OLMOCR failed: {page_text}")
+                page_text = ""
         else:
             logger.error(f"Unknown OCR engine: {document.ocr_engine} (normalized: '{ocr_engine_lower}') - this should not happen after validation")
             page_text = f"Error: Unknown OCR engine '{document.ocr_engine}'. Please select a valid OCR engine."

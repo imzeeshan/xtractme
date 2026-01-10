@@ -126,12 +126,14 @@ class DocumentAdminForm(forms.ModelForm):
         widgets = {
             'ocr_engine': forms.Select(choices=[
                 ('mineru', 'MinerU (Default)'),
+                ('pymupdf', 'PyMuPDF (PDF Text Extraction)'),
                 ('pdfplumber', 'pdfplumber (PDF Text Extraction)'),
                 ('tesseract', 'Tesseract OCR'),
                 ('deepseek', 'DeepSeek OCR'),
                 ('paddleocr', 'PaddleOCR'),
                 ('trocr', 'TrOCR (Transformer OCR)'),
                 ('donut', 'Donut (Document Understanding)'),
+                ('olmocr', 'OLMOCR (AI-Powered OCR)'),
             ]),
         }
 
@@ -984,6 +986,10 @@ class SettingsAdmin(ModelAdmin):
         ('DeepSeek OCR Settings', {
             'fields': ('deepseek_ocr_enabled', 'deepseek_ocr_api_url', 'deepseek_ocr_use_api'),
             'description': 'Configure DeepSeek OCR integration. Enable/disable and set API URL.'
+        }),
+        ('OLMOCR Settings', {
+            'fields': ('olmocr_enabled', 'olmocr_use_api', 'olmocr_api_url'),
+            'description': 'Configure OLMOCR integration. OLMOCR is an AI-powered OCR by Allen Institute for AI. Local mode (default) requires: pip install olmocr[gpu]. API mode uses online service.'
         }),
         ('General Settings', {
             'fields': ('site_title', 'site_header'),
