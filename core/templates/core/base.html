@@ -63,6 +63,9 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'document_create' %}">Upload Document</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'chat_home' %}">LLM Chat</a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -95,6 +98,7 @@
                         <li><a href="{% url 'home' %}" class="text-muted text-decoration-none">Home</a></li>
                         <li><a href="{% url 'document_list' %}" class="text-muted text-decoration-none">Documents</a></li>
                         <li><a href="{% url 'document_create' %}" class="text-muted text-decoration-none">Upload</a></li>
+                        <li><a href="{% url 'chat_home' %}" class="text-muted text-decoration-none">LLM Chat</a></li>
                     </ul>
                 </div>
                 <div class="col-md-3">

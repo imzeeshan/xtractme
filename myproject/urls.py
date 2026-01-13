@@ -25,6 +25,7 @@ from myproject import admin as project_admin  # noqa
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('core.urls')),
+    path('chat/', include('chat.urls')),
 ]
 
 # Serve media and static files in development
