@@ -1,5 +1,5 @@
 # Django Web Framework
-Django>=6.0,<7.0  # Latest 6.x series
+Django>=6.0.1,<7.0  # Latest 6.x series
 
 # PDF Processing
 PyMuPDF>=1.26.7  # Latest stable version
@@ -22,10 +22,10 @@ pyclipper>=1.4.0  # Latest version
 omegaconf>=2.3.0  # Required by MinerU for configuration management
 
 # Additional OCR Engines (Optional)
-paddlepaddle>=2.6.1  # Latest version
+paddlepaddle>=3.3.0  # Latest version
 paddleocr>=3.1.0  # Latest version
-transformers>=4.57.3  # Latest version for TrOCR and Donut VLM models
-torch>=2.7.1  # Latest version for TrOCR and Donut (PyTorch)
+transformers>=4.57.5  # Latest version for TrOCR and Donut VLM models
+torch>=2.9.1  # Latest version for TrOCR and Donut (PyTorch)
 olmocr>=0.4.15  # OLMOCR - AI-powered OCR by Allen Institute for AI (OPTIONAL)
 # Latest version: 0.4.15 (released Jan 9, 2026) - See https://pypi.org/project/olmocr/
 # Requirements: Python >=3.11, Recent NVIDIA GPU (RTX 4090, L40S, A100, H100) with 12GB+ VRAM, 30GB disk space
@@ -44,6 +44,8 @@ Pillow>=12.1.0  # Latest version
 
 # Scientific Computing
 numpy>=1.26.4  # Python 3.13+ requires numpy>=2.1.0 (via magika dependency)
+# Note: numpy 2.x is available but compatibility with opencv and other packages may vary
+# Update to numpy>=2.1.0 if you're using Python 3.13+ and all dependencies support it
 
 # Environment Management
 python-dotenv>=1.2.1  # Latest version
@@ -62,7 +64,8 @@ django-unfold>=0.74.1  # Latest version - Modern Django admin theme
 # - All OCR engines are optional - install only what you need
 # - PaddleOCR, TrOCR, and Donut require significant disk space for model downloads
 # - torch (PyTorch) is large - consider CPU-only version if GPU not available
-# - numpy is constrained to <2.0 due to compatibility with opencv and other packages
+# - numpy is constrained to <2.0 by default due to compatibility with opencv and other packages
 # - doclayout-yolo and ultralytics are required dependencies for MinerU
 # - Some packages have strict version requirements: opt-einsum==3.3.0 (paddlepaddle), 
 #   PyYAML==6.0.2 (paddlex), pypdfium2==4.30.0 (pdftext), onnxruntime<=1.20.1 (magika on Windows)
+# - To upgrade all packages: pip install --upgrade -r requirements.txt
