@@ -24,7 +24,7 @@ omegaconf>=2.3.0  # Required by MinerU for configuration management
 # Additional OCR Engines (Optional)
 paddlepaddle>=3.3.0  # Latest version
 paddleocr>=3.1.0  # Latest version
-transformers>=4.57.5  # Latest version for TrOCR and Donut VLM models
+transformers==4.57.3  # Exact version required for olmocr compatibility (olmocr 0.4.15+ requires transformers==4.57.3)
 torch>=2.9.1  # Latest version for TrOCR and Donut (PyTorch)
 olmocr>=0.4.15  # OLMOCR - AI-powered OCR by Allen Institute for AI (OPTIONAL)
 # Latest version: 0.4.15 (released Jan 9, 2026) - See https://pypi.org/project/olmocr/
