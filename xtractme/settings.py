@@ -171,6 +171,17 @@ else:
 # Set TESSERACT_CMD in .env file if Tesseract is not in PATH
 TESSERACT_CMD = os.getenv('TESSERACT_CMD', None)
 
+# LightOnOCR Configuration (Transformers)
+# Note: LightOnOCR support may require a newer/installed-from-source Transformers build.
+LIGHTONOCR_MODEL_ID = os.getenv('LIGHTONOCR_MODEL_ID', 'lightonai/LightOnOCR-2-1B')
+LIGHTONOCR_MAX_NEW_TOKENS = int(os.getenv('LIGHTONOCR_MAX_NEW_TOKENS', '2048'))
+# Rendering tip from LightOn: target ~1540px for longest side
+LIGHTONOCR_TARGET_LONGEST_DIM = int(os.getenv('LIGHTONOCR_TARGET_LONGEST_DIM', '1540'))
+LIGHTONOCR_PROMPT = os.getenv(
+    'LIGHTONOCR_PROMPT',
+    'Please extract and return all text visible in this image. Return only the text.',
+)
+
 # Logging Configuration
 LOGGING = {
     'version': 1,

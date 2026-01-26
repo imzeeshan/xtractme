@@ -423,6 +423,7 @@ class Settings(models.Model):
         ('trocr', 'TrOCR'),
         ('donut', 'Donut'),
         ('olmocr', 'OLMOCR'),
+        ('lightonocr', 'LightOnOCR-2-1B'),
     ]
     
     # Singleton identifier

@@ -21,7 +21,8 @@ def upload_file(request):
         extract_text_with_tesseract, 
         extract_text_with_deepseek, 
         extract_text_from_pdf,
-        extract_text_with_mineru
+        extract_text_with_mineru,
+        extract_text_with_lightonocr,
     )
     
     if request.method == 'POST' and request.FILES.get('file'):
@@ -40,6 +41,8 @@ def upload_file(request):
                     text = extract_text_with_mineru(file_path, file_type='image')
                 elif ocr_engine.lower() == 'tesseract':
                     text = extract_text_with_tesseract(file_path)
+                elif ocr_engine.lower() == 'lightonocr':
+                    text = extract_text_with_lightonocr(file_path, file_type='image')
                 else:  # deepseek
                     text = extract_text_with_deepseek(file_path)
             elif filename.lower().endswith('.pdf'):
@@ -228,6 +231,8 @@ def process_document_file(document):
             extract_text_with_paddleocr,
             extract_text_with_trocr,
             extract_text_with_donut,
+            extract_text_with_lightonocr,
+            extract_text_with_lightonocr_from_image,
             extract_text_from_pdf,
             extract_pages_with_mineru_json,
             extract_pages_with_paddleocr_layout
@@ -248,6 +253,10 @@ def process_document_file(document):
         def extract_text_with_trocr(*args, **kwargs):
             return ""
         def extract_text_with_donut(*args, **kwargs):
+            return ""
+        def extract_text_with_lightonocr(*args, **kwargs):
+            return ""
+        def extract_text_with_lightonocr_from_image(*args, **kwargs):
             return ""
         def extract_text_from_pdf(*args, **kwargs):
             return ""
@@ -292,7 +301,7 @@ def process_document_file(document):
         document.save(update_fields=['ocr_engine'])
     
     ocr_engine_lower = document.ocr_engine.lower()
-    valid_engines = ['mineru', 'pymupdf', 'pdfplumber', 'tesseract', 'deepseek', 'paddleocr', 'trocr', 'donut', 'olmocr']
+    valid_engines = ['mineru', 'pymupdf', 'pdfplumber', 'tesseract', 'deepseek', 'paddleocr', 'trocr', 'donut', 'olmocr', 'lightonocr']
     if ocr_engine_lower not in valid_engines:
         logger.warning(f"Invalid OCR engine '{document.ocr_engine}' for document {document.id}, defaulting to 'mineru'")
         document.ocr_engine = 'mineru'
@@ -684,6 +693,82 @@ def process_document_file(document):
                 # PaddleOCR layout extraction not available - fall through to traditional method
                 logger.info("PaddleOCR layout extraction not available. Falling back to traditional PDF processing.")
                 # Fall through to traditional processing
+
+        # If LightOnOCR is selected, use it for page-by-page OCR regardless of text layer
+        if ocr_engine_lower == 'lightonocr':
+            logger.info("Attempting LightOnOCR page-by-page extraction...")
+            from .ocr_utils import lightonocr_available
+
+            if not lightonocr_available:
+                logger.warning("LightOnOCR not available - falling back to traditional PDF processing")
+                # Fall through to traditional processing
+            else:
+                try:
+                    target_longest_dim = int(getattr(settings, "LIGHTONOCR_TARGET_LONGEST_DIM", 1540))
+                except Exception:
+                    target_longest_dim = 1540
+
+                pages_created = 0
+                doc = fitz.open(file_path)
+                total_pages = len(doc)
+                logger.info(f"PDF has {total_pages} pages (LightOnOCR)")
+
+                if total_pages == 0:
+                    doc.close()
+                    raise ValueError("PDF file has no pages")
+
+                for page_num in range(total_pages):
+                    page = doc.load_page(page_num)
+                    rect = page.rect
+                    longest = max(float(rect.width), float(rect.height)) if rect else 0.0
+                    scale = (target_longest_dim / longest) if longest and target_longest_dim else 2.5
+                    # Clamp to a reasonable range to avoid huge renders
+                    if scale < 0.5:
+                        scale = 0.5
+                    if scale > 6.0:
+                        scale = 6.0
+
+                    pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
+                    mode = "RGB" if getattr(pix, "n", 3) < 4 else "RGBA"
+                    img = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
+                    if mode == "RGBA":
+                        img = img.convert("RGB")
+
+                    page_text = extract_text_with_lightonocr_from_image(img)
+                    if page_text and page_text.startswith("Error"):
+                        logger.warning(f"LightOnOCR failed for page {page_num + 1}: {page_text}")
+                        page_text = ""
+
+                    json_data = {
+                        "ocr_engine": "lightonocr",
+                        "page_number": page_num + 1,
+                        "text": page_text.strip() if page_text else "",
+                        "has_ocr": True,
+                        "extraction_method": "vlm",
+                        "page_width": pix.width,
+                        "page_height": pix.height,
+                        "model_id": getattr(settings, "LIGHTONOCR_MODEL_ID", "lightonai/LightOnOCR-2-1B"),
+                        "target_longest_dim": target_longest_dim,
+                    }
+
+                    page_obj, created = Page.objects.get_or_create(
+                        document=document,
+                        page_number=page_num + 1,
+                        defaults={"text": page_text.strip() if page_text else "", "json_data": json_data},
+                    )
+                    if not created:
+                        page_obj.text = page_text.strip() if page_text else ""
+                        page_obj.json_data = json_data
+                        page_obj.save()
+
+                    pages_created += 1
+                    logger.info(f"{'Created' if created else 'Updated'} page {page_num + 1} with LightOnOCR (text length: {len(page_text)})")
+
+                doc.close()
+                logger.info(f"Successfully processed {pages_created} pages with LightOnOCR")
+                if pages_created == 0:
+                    raise ValueError("Failed to extract any pages with LightOnOCR")
+                return
         
         # Traditional PDF processing method
         logger.info("Using traditional PDF processing method...")
@@ -925,6 +1010,12 @@ def process_document_file(document):
                             logger.warning(f"OLMOCR failed: {page_text}")
                             page_text = ""
                             used_ocr = False
+                    elif ocr_engine_lower == 'lightonocr':
+                        page_text = extract_text_with_lightonocr_from_image(img)
+                        if page_text and page_text.startswith("Error"):
+                            logger.warning(f"LightOnOCR failed: {page_text}")
+                            page_text = ""
+                            used_ocr = False
                     else:
                         # Unknown OCR engine - log warning and use empty text
                         logger.warning(f"Unknown OCR engine '{document.ocr_engine}' (normalized: '{ocr_engine_lower}') for PDF page {page_num + 1} - creating page with empty text")
@@ -1003,6 +1094,11 @@ def process_document_file(document):
             page_text = extract_text_with_olmocr(file_path, file_type='image')
             if page_text and page_text.startswith("Error"):
                 logger.warning(f"OLMOCR failed: {page_text}")
+                page_text = ""
+        elif ocr_engine_lower == 'lightonocr':
+            page_text = extract_text_with_lightonocr(file_path, file_type='image')
+            if page_text and page_text.startswith("Error"):
+                logger.warning(f"LightOnOCR failed: {page_text}")
                 page_text = ""
         else:
             logger.error(f"Unknown OCR engine: {document.ocr_engine} (normalized: '{ocr_engine_lower}') - this should not happen after validation")

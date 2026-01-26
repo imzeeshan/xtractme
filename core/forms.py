@@ -36,6 +36,7 @@ class DocumentForm(forms.ModelForm):
                 ('trocr', 'TrOCR (Transformer OCR)'),
                 ('donut', 'Donut (Document Understanding)'),
                 ('olmocr', 'OLMOCR (AI-Powered OCR)'),
+                ('lightonocr', 'LightOnOCR-2-1B'),
             ]),
         }
     

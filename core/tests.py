@@ -133,6 +133,7 @@ class OCRUtilsTest(TestCase):
                 extract_text_with_paddleocr,
                 extract_text_with_trocr,
                 extract_text_with_donut,
+                extract_text_with_lightonocr,
             )
             # If imports succeed, test passes
             self.assertTrue(True)

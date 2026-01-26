@@ -1,7 +1,7 @@
 # xtractme
 Document Extraction with Django
 
-A Django-based document extraction and OCR application with support for multiple OCR engines including MinerU, OLMOCR, Tesseract, DeepSeek OCR, PaddleOCR, TrOCR, Donut, and more.
+A Django-based document extraction and OCR application with support for multiple OCR engines including MinerU, OLMOCR, LightOnOCR-2-1B, Tesseract, DeepSeek OCR, PaddleOCR, TrOCR, Donut, and more.
 
 ## Screenshot
 
@@ -57,6 +57,7 @@ pip install -r requirements.txt
 - **TrOCR/Donut**: Requires `torch` and `transformers` (already in requirements.txt)
 - **Tesseract**: Requires system installation (see Tesseract OCR Setup below)
 - **DeepSeek OCR**: Optional - can use API mode instead
+- **LightOnOCR-2-1B**: Requires Transformers with LightOnOCR support. If your installed Transformers doesn’t include it, install from source: `pip install git+https://github.com/huggingface/transformers`
 
 ### 3. Set Up Environment Variables (Optional)
 
@@ -71,6 +72,9 @@ DEEPSEEK_OCR_USE_API=True
 OLMOCR_ENABLED=True
 OLMOCR_USE_API=False
 OLMOCR_API_URL=https://api.olmocr.com
+LIGHTONOCR_MODEL_ID=lightonai/LightOnOCR-2-1B
+LIGHTONOCR_MAX_NEW_TOKENS=2048
+LIGHTONOCR_TARGET_LONGEST_DIM=1540
 OLLAMA_MODEL=qwen3:4b
 OLLAMA_HOST=http://localhost:11434
 LOG_LEVEL=INFO
@@ -137,6 +141,7 @@ The server will start at `http://localhost:8000/`
 - **Multiple OCR Engines Support**:
   - **MinerU** - Advanced document understanding with layout detection (default)
   - **OLMOCR** - AI-powered OCR by Allen Institute for AI (local or API)
+  - **LightOnOCR-2-1B** - End-to-end vision-language OCR (reading-order aware)
   - **Tesseract OCR** - Traditional OCR engine
   - **DeepSeek OCR** - API-based OCR with Ollama support
   - **PaddleOCR** - PaddlePaddle OCR with layout extraction
@@ -251,6 +256,7 @@ If you prefer to use OLMOCR via API:
 | **PaddleOCR** | Text with layout info | ✅ Yes | ❌ No | ✅ Layout | ⚠️ Basic |
 | **TrOCR** | Printed text | ✅ Yes | ❌ No | ✅ Basic | ❌ No |
 | **Donut** | Structured documents | ✅ Yes | ❌ No | ✅ Yes | ✅ Yes |
+| **LightOnOCR-2-1B** | End-to-end OCR / reading order | ✅ Yes | ❌ No | ✅ Basic | ❌ No |
 | **PyMuPDF** | PDFs with text layer | ✅ Yes | ❌ No | ✅ Basic | ❌ No |
 | **pdfplumber** | PDFs with text layer | ✅ Yes | ❌ No | ✅ Basic | ❌ No |
 

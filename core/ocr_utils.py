@@ -185,6 +185,66 @@ except Exception as e:
     logger.warning(f"Donut initialization failed: {str(e)}")
     donut_available = False
 
+# Try to initialize LightOnOCR (will fail gracefully if not available)
+# Note: We only check imports at import-time; model weights load lazily.
+lightonocr_available = False
+lightonocr_initialized = False
+lightonocr_processor = None
+lightonocr_model = None
+lightonocr_device = None
+lightonocr_dtype = None
+try:
+    # LightOnOCR support may not exist in all transformers releases
+    from transformers import LightOnOcrForConditionalGeneration, LightOnOcrProcessor  # noqa: F401
+    lightonocr_available = True
+except Exception:
+    # Any error here means LightOnOCR is not available in this environment
+    lightonocr_available = False
+
+def _init_lightonocr():
+    """Lazily initialize LightOnOCR only when needed."""
+    global lightonocr_initialized, lightonocr_processor, lightonocr_model, lightonocr_device, lightonocr_dtype
+
+    if lightonocr_initialized:
+        return lightonocr_model, lightonocr_processor
+
+    lightonocr_initialized = True
+
+    if not lightonocr_available:
+        return None, None
+
+    try:
+        import torch
+        from transformers import LightOnOcrForConditionalGeneration, LightOnOcrProcessor
+
+        model_id = getattr(settings, "LIGHTONOCR_MODEL_ID", "lightonai/LightOnOCR-2-1B")
+
+        if torch.cuda.is_available():
+            lightonocr_device = "cuda"
+            # Prefer BF16 if supported; otherwise FP16
+            try:
+                lightonocr_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            except Exception:
+                lightonocr_dtype = torch.float16
+        else:
+            lightonocr_device = "cpu"
+            lightonocr_dtype = torch.float32
+
+        lightonocr_model = LightOnOcrForConditionalGeneration.from_pretrained(
+            model_id,
+            torch_dtype=lightonocr_dtype,
+            low_cpu_mem_usage=True,
+        ).to(lightonocr_device)
+        lightonocr_processor = LightOnOcrProcessor.from_pretrained(model_id)
+
+        logger.info(f"LightOnOCR initialized: model_id={model_id}, device={lightonocr_device}, dtype={lightonocr_dtype}")
+        return lightonocr_model, lightonocr_processor
+    except Exception as e:
+        logger.warning(f"Failed to initialize LightOnOCR: {str(e)}")
+        lightonocr_model = None
+        lightonocr_processor = None
+        return None, None
+
 # Try to initialize OLMOCR (will fail gracefully if not available)
 olmocr_available = False
 try:
@@ -215,6 +275,92 @@ except Exception as e:
     logger.debug(f"OLMOCR not available: {str(e)}")
     olmocr_available = False
 
+
+def extract_text_with_lightonocr_from_image(img):
+    """Extract text from a PIL Image using LightOnOCR-2-1B (Transformers)."""
+    try:
+        model, processor = _init_lightonocr()
+        if model is None or processor is None:
+            return (
+                "Error: LightOnOCR is not available.\n"
+                "This requires a transformers build that includes LightOnOCR support.\n"
+                "Try installing Transformers from source: pip install git+https://github.com/huggingface/transformers"
+            )
+
+        import torch
+
+        max_new_tokens = int(getattr(settings, "LIGHTONOCR_MAX_NEW_TOKENS", 2048))
+        prompt = getattr(
+            settings,
+            "LIGHTONOCR_PROMPT",
+            "Please extract and return all text visible in this image. Return only the text.",
+        )
+
+        # LightOnOCR uses a chat-template style multimodal interface.
+        # Prefer typed multimodal content (image + optional instruction).
+        conversation = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": img},
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ]
+
+        try:
+            inputs = processor.apply_chat_template(
+                conversation,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+            )
+        except Exception:
+            # Fallback: try without a text instruction (image-only)
+            conversation = [{"role": "user", "content": [{"type": "image", "image": img}]}]
+            inputs = processor.apply_chat_template(
+                conversation,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="pt",
+            )
+
+        # Move tensors to device and cast floats
+        device = lightonocr_device or ("cuda" if torch.cuda.is_available() else "cpu")
+        dtype = lightonocr_dtype or (torch.float16 if device == "cuda" else torch.float32)
+        inputs = {k: (v.to(device=device, dtype=dtype) if v.is_floating_point() else v.to(device)) for k, v in inputs.items()}
+
+        with torch.inference_mode():
+            output_ids = model.generate(**inputs, max_new_tokens=max_new_tokens)
+
+        # Slice out the newly generated tokens
+        generated_ids = output_ids[0, inputs["input_ids"].shape[1] :]
+        output_text = processor.decode(generated_ids, skip_special_tokens=True)
+        return (output_text or "").strip()
+    except Exception as e:
+        logger.error(f"Error with LightOnOCR from image: {str(e)}", exc_info=True)
+        return f"Error with LightOnOCR: {str(e)}"
+
+
+def extract_text_with_lightonocr(file_path, file_type="pdf"):
+    """Extract text from an image (or single-page render) using LightOnOCR."""
+    try:
+        if not lightonocr_available:
+            return (
+                "Error: LightOnOCR is not available.\n"
+                "This requires a transformers build that includes LightOnOCR support.\n"
+                "Try installing Transformers from source: pip install git+https://github.com/huggingface/transformers"
+            )
+        if file_type == "pdf":
+            # Prefer using the app's PDF page pipeline; this function is intended for images.
+            return "Error: LightOnOCR PDF extraction is handled page-by-page. Use process_document_file() pipeline."
+        img = Image.open(file_path).convert("RGB")
+        return extract_text_with_lightonocr_from_image(img)
+    except Exception as e:
+        logger.error(f"Error with LightOnOCR: {str(e)}", exc_info=True)
+        return f"Error with LightOnOCR: {str(e)}"
 
 def extract_text_with_tesseract(image_path):
     """Extract text from an image using Tesseract OCR"""
@@ -1557,6 +1703,40 @@ def extract_text_from_pdf(pdf_path, ocr_engine='mineru'):
         # If pdfplumber is selected, use it (best for PDFs with text layers)
         if ocr_engine.lower() == 'pdfplumber':
             return extract_text_with_pdfplumber(pdf_path, file_type='pdf')
+
+        # If LightOnOCR is selected, run page-by-page OCR regardless of text layer
+        if ocr_engine.lower() == 'lightonocr':
+            import fitz
+            doc = fitz.open(pdf_path)
+            text_parts = []
+            try:
+                target_longest_dim = int(getattr(settings, "LIGHTONOCR_TARGET_LONGEST_DIM", 1540))
+            except Exception:
+                target_longest_dim = 1540
+
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                rect = page.rect
+                longest = max(float(rect.width), float(rect.height)) if rect else 0.0
+                scale = (target_longest_dim / longest) if longest and target_longest_dim else 2.5
+                if scale < 0.5:
+                    scale = 0.5
+                if scale > 6.0:
+                    scale = 6.0
+
+                pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
+                mode = "RGB" if getattr(pix, "n", 3) < 4 else "RGBA"
+                img = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
+                if mode == "RGBA":
+                    img = img.convert("RGB")
+
+                page_text = extract_text_with_lightonocr_from_image(img)
+                if page_text and page_text.startswith("Error"):
+                    page_text = ""
+                text_parts.append(f"--- Page {page_num + 1} ---\n{(page_text or '').strip()}\n")
+
+            doc.close()
+            return "\n".join(text_parts).strip()
         
         # If MinerU is selected and available, use it
         if ocr_engine.lower() == 'mineru' and mineru_available and mineru_do_parse is not None:
@@ -1595,6 +1775,8 @@ def extract_text_from_pdf(pdf_path, ocr_engine='mineru'):
                     page_text = pytesseract.image_to_string(img)
                 elif ocr_engine.lower() == 'deepseek':
                     page_text = extract_text_with_deepseek_from_image(img)
+                elif ocr_engine.lower() == 'lightonocr':
+                    page_text = extract_text_with_lightonocr_from_image(img)
                 else:
                     # Default to Tesseract if unknown engine
                     page_text = pytesseract.image_to_string(img)
